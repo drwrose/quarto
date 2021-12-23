@@ -14,6 +14,7 @@ Board() {
   _num_used_pieces = 0;
   _used_pieces = 0;
   _win = 0;
+  _near_win_count = 0;
 }
 
 // This constructor makes a copy of the Board, and then places the
@@ -33,7 +34,7 @@ Board(const Board &copy, unsigned int si, Piece piece) :
   _num_used_pieces++;
   _occupied |= get_mask(si);
   _used_pieces |= piece.get_bit();
-  _win = calc_win();
+  calc_win();
 }
 
 Board::
@@ -100,50 +101,6 @@ bool Board::
 is_game_over() const {
   return (_num_used_pieces >= num_squares || _num_used_pieces >= Piece::num_pieces || _win != 0);
 }
-
-// Returns a bitmask of all of the squares that contribute to a win.
-// Returns 0 if there is no win.
-Board::BoardMask Board::
-calc_win() const {
-  if (num_rows == 4 && num_cols == 4) {
-    return
-      calc_row_win(0, 1, 2, 3) |
-      calc_row_win(4, 5, 6, 7) |
-      calc_row_win(8, 9, 10, 11) |
-      calc_row_win(12, 13, 14, 15) |
-      calc_row_win(0, 4, 8, 12) |
-      calc_row_win(1, 5, 9, 13) |
-      calc_row_win(2, 6, 10, 14) |
-      calc_row_win(3, 7, 11, 15) |
-      calc_row_win(0, 5, 10, 15) |
-      calc_row_win(3, 6, 9, 12);
-
-  } else if (num_rows == 3 && num_cols == 3) {
-    return
-      calc_row_win(0, 1, 2) |
-      calc_row_win(3, 4, 5) |
-      calc_row_win(6, 7, 8) |
-      calc_row_win(0, 3, 6) |
-      calc_row_win(1, 4, 7) |
-      calc_row_win(2, 5, 8) |
-      calc_row_win(0, 4, 8) |
-      calc_row_win(2, 4, 6);
-
-  } else if (num_rows == 2 && num_cols == 2) {
-    return
-      calc_row_win(0, 1) |
-      calc_row_win(2, 3) |
-      calc_row_win(0, 2) |
-      calc_row_win(1, 3) |
-      calc_row_win(0, 3) |
-      calc_row_win(1, 2);
-
-  } else {
-    // Not implemented.
-    assert(false);
-  }
-}
-
 
 // Chooses the appropriate give_piece to hand to the next player, as an
 // AI player.  Returns Piece, and fills best_result.
@@ -274,76 +231,151 @@ write(std::ostream &out) const {
   }
 }
 
-// Returns a bitmask of the indicated squares if they represent a win.
-// Returns 0 if they do not.
-Board::BoardMask Board::
-calc_row_win(int a, int b) const {
+// Fills _win with a bitmask of all of the squares that contribute to
+// a win (four in a row).  Sets it to 0 if there is no win.  Also,
+// sets _near_win_count to the number of rows that are one piece short
+// of a win.
+void Board::
+calc_win() {
+  _win = 0;
+  _near_win_count = 0;
+
+  if (num_rows == 4 && num_cols == 4) {
+    calc_row_win(0, 1, 2, 3);
+    calc_row_win(4, 5, 6, 7);
+    calc_row_win(8, 9, 10, 11);
+    calc_row_win(12, 13, 14, 15);
+    calc_row_win(0, 4, 8, 12);
+    calc_row_win(1, 5, 9, 13);
+    calc_row_win(2, 6, 10, 14);
+    calc_row_win(3, 7, 11, 15);
+    calc_row_win(0, 5, 10, 15);
+    calc_row_win(3, 6, 9, 12);
+
+  } else if (num_rows == 3 && num_cols == 3) {
+    calc_row_win(0, 1, 2);
+    calc_row_win(3, 4, 5);
+    calc_row_win(6, 7, 8);
+    calc_row_win(0, 3, 6);
+    calc_row_win(1, 4, 7);
+    calc_row_win(2, 5, 8);
+    calc_row_win(0, 4, 8);
+    calc_row_win(2, 4, 6);
+
+  } else if (num_rows == 2 && num_cols == 2) {
+    calc_row_win(0, 1);
+    calc_row_win(2, 3);
+    calc_row_win(0, 2);
+    calc_row_win(1, 3);
+    calc_row_win(0, 3);
+    calc_row_win(1, 2);
+
+  } else {
+    // Not implemented.
+    assert(false);
+  }
+}
+
+// If the indicated squares indicate a win, adds the appropriate
+// bitmask to _win.  Otherwise, does nothing.
+void Board::
+calc_row_win(int a, int b) {
   if (is_empty(a) || is_empty(b)) {
     // The row is not yet filled, it's not a win.
-    return 0;
+    return;
   }
 
   // The row is filled, it's a win if one of the attribs all match.
   if ((_board[a] & _board[b]) != 0) {
     // One of the 1-bits matches.
-    return get_mask(a) | get_mask(b);
+    _win |= (get_mask(a) | get_mask(b));
   }
 
   if ((_board[a] | _board[b]) != Piece::all_attribs) {
     // One of the 0-bits matches.
-    return get_mask(a) | get_mask(b);
+    _win |= (get_mask(a) | get_mask(b));
   }
 
   // None of the attribs match.
-  return 0;
 }
 
-// Returns a bitmask of the indicated squares if they represent a win.
-// Returns 0 if they do not.
-Board::BoardMask Board::
-calc_row_win(int a, int b, int c) const {
+// If the indicated squares indicate a win, adds the appropriate
+// bitmask to _win.  Otherwise, does nothing.
+void Board::
+calc_row_win(int a, int b, int c) {
   if (is_empty(a) || is_empty(b) || is_empty(c)) {
     // The row is not yet filled, it's not a win.
-    return 0;
+    return;
   }
 
   // The row is filled, it's a win if one of the attribs all match.
   if ((_board[a] & _board[b] & _board[c]) != 0) {
     // One of the 1-bits matches.
-    return get_mask(a) | get_mask(b) | get_mask(c);
+    _win |= (get_mask(a) | get_mask(b) | get_mask(c));
   }
 
   if ((_board[a] | _board[b] | _board[c]) != Piece::all_attribs) {
     // One of the 0-bits matches.
-    return get_mask(a) | get_mask(b) | get_mask(c);
+    _win |= (get_mask(a) | get_mask(b) | get_mask(c));
   }
 
   // None of the attribs match.
-  return 0;
 }
 
-// Returns a bitmask of the indicated squares if they represent a win.
-// Returns 0 if they do not.
-Board::BoardMask Board::
-calc_row_win(int a, int b, int c, int d) const {
-  if (is_empty(a) || is_empty(b) || is_empty(c) || is_empty(d)) {
+// Called for four squares in a row.  If the indicated squares
+// indicate a win, adds the appropriate bitmask to _win.  Otherwise,
+// does nothing.
+void Board::
+calc_row_win(int a, int b, int c, int d) {
+  int empty_count = (int)is_empty(a) + (int)is_empty(b) + (int)is_empty(c) + (int)is_empty(d);
+  if (empty_count == 1) {
+    if (is_empty(a)) {
+      calc_row_near_win(b, c, d);
+    } else if (is_empty(b)) {
+      calc_row_near_win(a, c, d);
+    } else if (is_empty(c)) {
+      calc_row_near_win(a, b, d);
+    } else {
+      assert(is_empty(d));
+      calc_row_near_win(a, b, c);
+    }
+    return;
+  } else if (empty_count != 0) {
     // The row is not yet filled, it's not a win.
-    return 0;
+    return;
   }
 
   // The row is filled, it's a win if one of the attribs all match.
   if ((_board[a] & _board[b] & _board[c] & _board[d]) != 0) {
     // One of the 1-bits matches.
-    return get_mask(a) | get_mask(b) | get_mask(c) | get_mask(d);
+    _win |= (get_mask(a) | get_mask(b) | get_mask(c) | get_mask(d));
   }
 
   if ((_board[a] | _board[b] | _board[c] | _board[d]) != Piece::all_attribs) {
     // One of the 0-bits matches.
-    return get_mask(a) | get_mask(b) | get_mask(c) | get_mask(d);
+    _win |= (get_mask(a) | get_mask(b) | get_mask(c) | get_mask(d));
   }
 
   // None of the attribs match.
-  return 0;
+}
+
+// Called for three occupied squares in a row of four squares.  If the
+// indicated squares indicate a potential near-win--that is, all three
+// pieces match at least one attribute--increments _near_win_count.
+// Otherwise, does nothing.
+void Board::
+calc_row_near_win(int a, int b, int c) {
+  if ((_board[a] & _board[b] & _board[c]) != 0) {
+    // One of the 1-bits matches.
+    _near_win_count++;
+  }
+
+  if ((_board[a] | _board[b] | _board[c]) != Piece::all_attribs) {
+    // One of the 0-bits matches.
+    _near_win_count++;
+  }
+
+  // None of the attribs match.
 }
 
 // FIlls max_me_levels with the maximum number of levels we continue
@@ -474,6 +506,10 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
     return;
   }
 
+  // Count up the near-wins, we use these to weight a choice when
+  // there aren't other obvious benefits for one choice or another.
+  me_result.inc_near_win(_near_win_count);
+
   bool my_turn = (me_player_index == get_current_give_player_index());
   if (save_piece) {
     assert(my_turn);
@@ -529,6 +565,7 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
       // On my turn, we don't consider choosing pieces that would
       // result in a forced loss for us, unless we have to.
       if (next_result.is_forced_loss()) {
+        me_result.inc_near_win(next_result);
         forced_result += next_result;
         if (show_log) std::cerr << this << " skipping my forced loss\n";
         continue;
@@ -540,6 +577,7 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
       // But we do count a potential win as an "accidental" win.
       if (next_result.is_forced_win()) {
         me_result.inc_accidental_win(next_result);
+        me_result.inc_near_win(next_result);
         forced_result += next_result;
         if (show_log) std::cerr << this << " skipping their forced loss\n";
         continue;
@@ -580,6 +618,10 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
     me_result.inc_tie();
     return;
   }
+
+  // Count up the near-wins, we use these to weight a choice when
+  // there aren't other obvious benefits for one choice or another.
+  me_result.inc_near_win(_near_win_count);
 
   std::vector<std::shared_ptr<Board> > next_boards;
 
@@ -644,6 +686,7 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
       // On my turn, we don't consider choosing squares that would
       // result in a forced loss for us, unless we have to.
       if (next_result.is_forced_loss()) {
+        sum_result.inc_near_win(next_result);
         forced_result += next_result;
         if (show_log) std::cerr << this << " skipping my forced loss\n";
         continue;
@@ -654,6 +697,7 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
       // that would result in a forced win for us, unless we have to.
       // But we do count a potential win as an "accidental" win.
       if (next_result.is_forced_win()) {
+        sum_result.inc_near_win(next_result);
         sum_result.inc_accidental_win(next_result);
         forced_result += next_result;
         if (show_log) std::cerr << this << " skipping their forced loss\n";
@@ -672,6 +716,9 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
   }
 
   if (show_log) std::cerr << this << " done, computed " << sum_result << "\n";
+
+  // We always accumulate the near_win count.
+  me_result.inc_near_win(sum_result);
 
   if (sum_result.is_forced_win()) {
     // We have a forced win!  All subsequent moves result in a win for us.

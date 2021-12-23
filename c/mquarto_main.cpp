@@ -141,7 +141,7 @@ main(int argc, char *argv[]) {
     flag = pgetopt(argc, argv, (char *)optflags);
   }
 
-  Quarto::random_generator.seed((unsigned int)std::time(nullptr));
+  //Quarto::random_generator.seed((unsigned int)std::time(nullptr));
   run_game();
 
   return 0;

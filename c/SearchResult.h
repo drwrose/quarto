@@ -49,8 +49,11 @@ public:
   int accidental_win_count() const {
     return _accidental_win_count;
   }
+  bool near_win_count() const {
+    return _near_win_count;
+  }
   int win_score() const {
-    return 2 * _win_count + _accidental_win_count;
+    return 2 * _win_count + _accidental_win_count + _near_win_count;
   }
   int lose_count() const {
     return _lose_count;
@@ -77,6 +80,12 @@ public:
   void inc_accidental_win(const SearchResult &other) {
     _accidental_win_count += other._accidental_win_count;
   }
+  void inc_near_win(int near_win_count) {
+    _near_win_count += near_win_count;
+  }
+  void inc_near_win(const SearchResult &other) {
+    _near_win_count += other._near_win_count;
+  }
   void inc_lose() {
     _lose_count++;
   }
@@ -95,6 +104,7 @@ private:
   Piece _aux_piece;
   int _win_count;
   int _accidental_win_count;
+  int _near_win_count;
   int _lose_count;
   int _tie_count;
 };

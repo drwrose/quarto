@@ -65,10 +65,11 @@ public:
   void write(std::ostream &out) const;
 
 private:
-  BoardMask calc_win() const;
-  BoardMask calc_row_win(int a, int b) const;
-  BoardMask calc_row_win(int a, int b, int c) const;
-  BoardMask calc_row_win(int a, int b, int c, int d) const;
+  void calc_win();
+  void calc_row_win(int a, int b);
+  void calc_row_win(int a, int b, int c);
+  void calc_row_win(int a, int b, int c, int d);
+  void calc_row_near_win(int a, int b, int c);
 
   void get_max_search_levels(int &max_me_levels, int &max_search_levels, int bias = 0) const;
 
@@ -87,6 +88,7 @@ private:
   int _num_used_pieces;
   Piece::PieceMask _used_pieces;
   BoardMask _win;
+  int _near_win_count;
 };
 
 #endif  // Board
