@@ -70,11 +70,11 @@ private:
   BoardMask calc_row_win(int a, int b, int c) const;
   BoardMask calc_row_win(int a, int b, int c, int d) const;
 
-  int get_max_search_levels(int bias = 0) const;
+  void get_max_search_levels(int &max_me_levels, int &max_search_levels, int bias = 0) const;
 
   void choose_from_result_list(SearchResult &best_result, const std::vector<SearchResult> &result_list, bool show_log = false) const;
-  void search_wins(SearchResult &me_result, int me_player_index, int max_search_levels, bool save_piece, bool show_log = false) const;
-  void search_wins(SearchResult &me_result, int me_player_index, int max_search_levels, Piece give_piece, bool show_log = false) const;
+  void search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int max_search_levels, bool save_piece, bool show_log = false) const;
+  void search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int max_search_levels, Piece give_piece, bool show_log = false) const;
 
 private:
   // TODO: pack this for efficiency?

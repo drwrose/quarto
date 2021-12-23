@@ -7,6 +7,7 @@
 
 #include <set>
 #include <vector>
+#include <random>
 
 class Quarto {
 public:
@@ -29,6 +30,9 @@ public:
   Player &get_winning_player() { return get_player(_board->get_winning_player_index()); }
 
   std::shared_ptr<Board> add_or_get_search_board(const std::shared_ptr<Board> &board);
+
+public:
+  static std::minstd_rand random_generator;
 
 private:
   int r_choose_square(const Board &board, Piece give_piece);

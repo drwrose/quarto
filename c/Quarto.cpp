@@ -1,5 +1,7 @@
 #include "Quarto.h"
 
+std::minstd_rand Quarto::random_generator;
+
 Quarto::
 Quarto() {
   new_game();
@@ -23,11 +25,13 @@ new_game() {
     _players.emplace_back(Player(this, pi));
   }
 
-  // Temp hack?
+  // Specify which of the players are robots and which aren't.
   _players[0].set_robot(true);
   _players[1].set_robot(true);
-  //_players[2].set_robot(true);
+  //  _players[2].set_robot(true);
 
+  // In case we want to pre-fill pieces on the board to study a game
+  // position.
   /*
   _board = _board->place_piece(0, Piece("rhsd"));
   _board = _board->place_piece(1, Piece("qftl"));

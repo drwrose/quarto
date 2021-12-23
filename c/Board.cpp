@@ -1,10 +1,12 @@
 #include "Board.h"
 #include "Player.h"
+#include "Quarto.h"
 
 #include <assert.h>
 #include <iomanip>
 #include <algorithm>
 #include <vector>
+#include <random>
 
 Board::
 Board() {
@@ -150,7 +152,8 @@ choose_piece(SearchResult &best_result, int me_player_index) const {
   assert(!is_game_over());
   assert(me_player_index == get_current_give_player_index());
 
-  int max_search_levels = get_max_search_levels(1);
+  int max_me_levels, max_search_levels;
+  get_max_search_levels(max_me_levels, max_search_levels, 1);
   //std::cerr << "choose_piece(), max_search_levels = " << max_search_levels << "\n";
 
   // Get a list of all of the possible pieces, and search below for
@@ -165,13 +168,13 @@ choose_piece(SearchResult &best_result, int me_player_index) const {
 
     SearchResult next_result;
     next_result.set_aux_piece(give_piece);
-    search_wins(next_result, me_player_index, max_search_levels, give_piece);
+    search_wins(next_result, me_player_index, max_me_levels, max_search_levels, give_piece);
     result_list.push_back(next_result);
   }
 
   // Shuffle the result_list, so we don't have any systemic
   // preferences.
-  std::random_shuffle(result_list.begin(), result_list.end());
+  std::shuffle(result_list.begin(), result_list.end(), Quarto::random_generator);
 
   choose_from_result_list(best_result, result_list);
   return best_result.get_aux_piece();
@@ -184,8 +187,9 @@ choose_square_and_piece(unsigned int &chosen_si, Piece &chosen_piece, int me_pla
   assert(!is_game_over());
   assert(me_player_index == get_current_place_player_index());
 
-  int max_search_levels = get_max_search_levels();
-  std::cerr << "choose_square(), max_search_levels = " << max_search_levels << "\n";
+  int max_me_levels, max_search_levels;
+  get_max_search_levels(max_me_levels, max_search_levels);
+  std::cerr << "choose_square(), max_search_levels = " << max_me_levels << ", " << max_search_levels << "\n";
 
   // First, get a list of all of the possible squares.
   std::vector<int> si_list;
@@ -201,7 +205,7 @@ choose_square_and_piece(unsigned int &chosen_si, Piece &chosen_piece, int me_pla
 
   // And go through that list in random order so we don't have any
   // systemic preferences.
-  std::random_shuffle(si_list.begin(), si_list.end());
+  std::shuffle(si_list.begin(), si_list.end(), Quarto::random_generator);
 
   // Now consider actually placing the piece in each of those squares.
   std::vector<std::shared_ptr<Board> > next_boards_by_si;
@@ -226,7 +230,7 @@ choose_square_and_piece(unsigned int &chosen_si, Piece &chosen_piece, int me_pla
 
     SearchResult next_result;
     next_result.set_aux_si(si);
-    next_board->search_wins(next_result, me_player_index, max_search_levels - 1, true);
+    next_board->search_wins(next_result, me_player_index, max_me_levels - 1, max_search_levels - 1, true);
     result_list.push_back(next_result);
   }
 
@@ -342,26 +346,45 @@ calc_row_win(int a, int b, int c, int d) const {
   return 0;
 }
 
-// Returns the maximum number of search levels we should undergo based
-// on the current state of the game.
-int Board::
-get_max_search_levels(int bias) const {
+// FIlls max_me_levels with the maximum number of levels we continue
+// to search our own possible moves, and max_search_levels with the
+// the maximum number of search levels we continue to search anything
+// at all, based on the current state of the game.  (We limit these
+// only to save on time, so we don't spend years computing
+// quadrillions of moves.)
+void Board::
+get_max_search_levels(int &max_me_levels, int &max_search_levels, int bias) const {
   int empty_squares = (num_squares - _num_used_pieces) + bias;
-  if (empty_squares < 10) {
-    // Only a few squares remain.  Go deep.
-    return 7;
+  if (empty_squares < 8) {
+    // Only a few squares remain.  Go all the way down.
+    max_me_levels = 8;
+    max_search_levels = 8;
+
+  } else if (empty_squares < 10) {
+    // Go deeper now.
+    max_me_levels = 5;
+    max_search_levels = 7;
 
   } else if (empty_squares < 11) {
-    // Look a few moves ahead, but not too many.
-    return 5;
+    // Look a few more moves ahead, but not too many yet.
+    max_me_levels = 4;
+    max_search_levels = 6;
 
   } else if (empty_squares < 14) {
-    // Look only a few moves ahead.
-    return 3;
+    // Look only a few moves ahead, but not so few that we overlook an
+    // early win.
+    max_me_levels = 2;
+    max_search_levels = 6;
+
+  } else if (empty_squares < 15) {
+    // Just look ahead enough not to get screwed.
+    max_me_levels = 2;
+    max_search_levels = 3;
 
   } else {
-    // Just look ahead enough not to get screwed.
-    return 2;
+    // It really doesn't matter.
+    max_me_levels = 2;
+    max_search_levels = 2;
   }
 }
 
@@ -433,7 +456,7 @@ choose_from_result_list(SearchResult &best_result, const std::vector<SearchResul
 // save_piece is true, then me_result.get_aux_piece() is also filled
 // with the chosen give_piece.
 void Board::
-search_wins(SearchResult &me_result, int me_player_index, int max_search_levels, bool save_piece, bool show_log) const {
+search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int max_search_levels, bool save_piece, bool show_log) const {
   if (show_log) {
     std::cerr << this << "->search_wins for piece(..., " << me_player_index << ", " << max_search_levels << ")\n";
     write(std::cerr);
@@ -474,7 +497,21 @@ search_wins(SearchResult &me_result, int me_player_index, int max_search_levels,
   SearchResult forced_result;
   bool got_any = false;
 
+  unsigned int specific_pi;
+  if (my_turn && max_me_levels <= 0) {
+    // If we're too far down the search tree to keep searching all of
+    // my own possible moves, just pick one particular move at random.
+    specific_pi = std::uniform_int_distribution<>(0, Piece::num_pieces - 1)(Quarto::random_generator);
+  }
+
   for (unsigned int pi = 0; pi < Piece::num_pieces; ++pi) {
+    if (my_turn && max_me_levels <= 0) {
+      if (pi != specific_pi) {
+        // Skip the ones we're not considering.
+        continue;
+      }
+    }
+
     Piece give_piece(pi);
     if (!is_unused(give_piece)) {
       // This square is already used, not an option.
@@ -484,7 +521,7 @@ search_wins(SearchResult &me_result, int me_player_index, int max_search_levels,
     if (show_log) std::cerr << this << " considering " << give_piece << "\n";
 
     SearchResult next_result;
-    search_wins(next_result, me_player_index, max_search_levels, give_piece);
+    search_wins(next_result, me_player_index, max_me_levels, max_search_levels, give_piece);
 
     if (show_log) std::cerr << this << " " << give_piece << " results in " << next_result << "\n";
 
@@ -527,7 +564,7 @@ search_wins(SearchResult &me_result, int me_player_index, int max_search_levels,
 // win_counts with the count of win conditions detected for each
 // player.
 void Board::
-search_wins(SearchResult &me_result, int me_player_index, int max_search_levels, Piece give_piece, bool show_log) const {
+search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int max_search_levels, Piece give_piece, bool show_log) const {
   if (show_log) {
     std::cerr << this << "->search_wins for square(..., " << me_player_index << ", " << max_search_levels << ", " << give_piece << ")\n";
     write(std::cerr);
@@ -548,7 +585,21 @@ search_wins(SearchResult &me_result, int me_player_index, int max_search_levels,
 
   bool my_turn = (me_player_index == get_current_place_player_index());
 
+  unsigned int specific_si;
+  if (my_turn && max_me_levels <= 0) {
+    // If we're too far down the search tree to keep searching all of
+    // my own possible moves, just pick one particular move at random.
+    specific_si = std::uniform_int_distribution<>(0, num_squares - 1)(Quarto::random_generator);
+  }
+
   for (unsigned int si = 0; si < num_squares; ++si) {
+    if (my_turn && max_me_levels <= 0) {
+      if (si != specific_si) {
+        // Skip the ones we're not considering.
+        continue;
+      }
+    }
+
     if (!is_empty(si)) {
       // This square is already occupied, not an option.
       continue;
@@ -586,7 +637,7 @@ search_wins(SearchResult &me_result, int me_player_index, int max_search_levels,
   for (auto next_board : next_boards) {
     SearchResult next_result;
     if (show_log) std::cerr << this << " recursing into " << next_board << " {\n";
-    next_board->search_wins(next_result, me_player_index, max_search_levels - 1, false);
+    next_board->search_wins(next_result, me_player_index, max_me_levels - 1, max_search_levels - 1, false);
     if (show_log) std::cerr << "} back in " << this << ", " << next_result << "\n";
 
     if (my_turn) {
