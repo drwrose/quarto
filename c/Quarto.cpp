@@ -40,6 +40,7 @@ new_game() {
  qhtl   rftd   rhsd   -16-
   */
 
+  /*
   //_board = _board->place_piece(0, Piece(""));
   //_board = _board->place_piece(1, Piece(""));
   _board = _board->place_piece(2, Piece("qftl"));
@@ -59,6 +60,7 @@ new_game() {
   _board = _board->place_piece(13, Piece("rftd"));
   _board = _board->place_piece(14, Piece("rhsd"));
   //_board = _board->place_piece(15, Piece(""));
+  */
 }
 
 Player &Quarto::

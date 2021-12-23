@@ -59,7 +59,7 @@ public:
   BoardMask get_occupied() const { return _occupied; }
   int get_num_used_pieces() const { return _num_used_pieces; }
 
-  Piece choose_piece(SearchResult &best_result, int me_player_index) const;
+  Piece choose_piece(SearchResult &best_result, int me_player_index, bool show_log = false) const;
   void choose_square_and_piece(unsigned int &chosen_si, Piece &chosen_piece, int me_player_index, Piece give_piece) const;
 
   void write(std::ostream &out) const;

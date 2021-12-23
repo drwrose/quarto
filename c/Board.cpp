@@ -105,13 +105,13 @@ is_game_over() const {
 // Chooses the appropriate give_piece to hand to the next player, as an
 // AI player.  Returns Piece, and fills best_result.
 Piece Board::
-choose_piece(SearchResult &best_result, int me_player_index) const {
+choose_piece(SearchResult &best_result, int me_player_index, bool show_log) const {
   assert(!is_game_over());
   assert(me_player_index == get_current_give_player_index());
 
   int max_me_levels, max_search_levels;
   get_max_search_levels(max_me_levels, max_search_levels, 1);
-  //std::cerr << "choose_piece(), max_search_levels = " << max_search_levels << "\n";
+  if (show_log) std::cerr << "choose_piece(), max_search_levels = " << max_me_levels << ", " << max_search_levels << "\n";
 
   // Get a list of all of the possible pieces, and search below for
   // each one.
@@ -125,7 +125,7 @@ choose_piece(SearchResult &best_result, int me_player_index) const {
 
     SearchResult next_result;
     next_result.set_aux_piece(give_piece);
-    search_wins(next_result, me_player_index, max_me_levels, max_search_levels, give_piece);
+    search_wins(next_result, me_player_index, max_me_levels, max_search_levels, give_piece, show_log);
     result_list.push_back(next_result);
   }
 
@@ -133,7 +133,7 @@ choose_piece(SearchResult &best_result, int me_player_index) const {
   // preferences.
   std::shuffle(result_list.begin(), result_list.end(), Quarto::random_generator);
 
-  choose_from_result_list(best_result, result_list);
+  choose_from_result_list(best_result, result_list, show_log);
   return best_result.get_aux_piece();
 }
 
@@ -464,14 +464,14 @@ choose_from_result_list(SearchResult &best_result, const std::vector<SearchResul
     }
   }
 
-  if (best_mixed_ratio >= 0.0) {
-    if (show_log) std::cerr << "choosing best mixed option " << best_mixed_ri << ", ratio is " << best_mixed_ratio << "\n";
-    best_result = result_list[best_mixed_ri];
-    return;
-  }
   if (best_tie_wins >= 0) {
     if (show_log) std::cerr << "choosing best tie option " << best_tie_ri << ", win score is " << best_tie_wins << "\n";
     best_result = result_list[best_tie_ri];
+    return;
+  }
+  if (best_mixed_ratio >= 0.0) {
+    if (show_log) std::cerr << "choosing best mixed option " << best_mixed_ri << ", ratio is " << best_mixed_ratio << "\n";
+    best_result = result_list[best_mixed_ri];
     return;
   }
 
@@ -515,13 +515,13 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
     assert(my_turn);
     // If it's my turn, instead of examining all of the pieces, we can
     // instead choose our favorite piece and examine that one only.
-    SearchResult next_result;
-    Piece give_piece = choose_piece(next_result, me_player_index);
+    SearchResult next_result0;
+    Piece give_piece = choose_piece(next_result0, me_player_index);
 
     if (show_log) std::cerr << this << " considering only " << give_piece << "\n";
 
-    //SearchResult next_result;
-    //search_wins(next_result, me_player_index, max_search_levels, give_piece);
+    SearchResult next_result;
+    search_wins(next_result, me_player_index, max_me_levels, max_search_levels, give_piece);
 
     if (show_log) std::cerr << this << " " << give_piece << " results in " << next_result << "\n";
     me_result += next_result;
@@ -743,6 +743,7 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
     me_result.inc_accidental_win(sum_result);
 
   } else {
-    if (show_log) std::cerr << this << " is unknown\n";
+    if (show_log) std::cerr << this << " is mixed\n";
+    me_result += sum_result;
   }
 }
