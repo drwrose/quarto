@@ -34,31 +34,31 @@ new_game() {
   // position.
 
   /*
- --1-   --2-   qftl   rftl
- qftd   qhsl   rfsd   rhtd
- rhsl   rhtl   -11-   qfsd
- qhtl   rftd   rhsd   -16-
+ --1-   qhtd   qhsd   --4-
+ --5-   --6-   --7-   --8-
+ --9-   rftd   rfsd   rfsl
+ -13-   -14-   -15-   -16-
   */
 
   /*
   //_board = _board->place_piece(0, Piece(""));
-  //_board = _board->place_piece(1, Piece(""));
-  _board = _board->place_piece(2, Piece("qftl"));
-  _board = _board->place_piece(3, Piece("rftl"));
+  _board = _board->place_piece(1, Piece("qhtd"));
+  _board = _board->place_piece(2, Piece("qhsd"));
+  //_board = _board->place_piece(3, Piece(""));
 
-  _board = _board->place_piece(4, Piece("qftd"));
-  _board = _board->place_piece(5, Piece("qhsl"));
-  _board = _board->place_piece(6, Piece("rfsd"));
-  _board = _board->place_piece(7, Piece("rhtd"));
+  //_board = _board->place_piece(4, Piece("qftd"));
+  //_board = _board->place_piece(5, Piece("qhsl"));
+  //_board = _board->place_piece(6, Piece("rfsd"));
+  //_board = _board->place_piece(7, Piece("rhtd"));
 
-  _board = _board->place_piece(8, Piece("rhsl"));
-  _board = _board->place_piece(9, Piece("rhtl"));
-  //_board = _board->place_piece(10, Piece(""));
-  _board = _board->place_piece(11, Piece("qfsd"));
+  //_board = _board->place_piece(8, Piece(""));
+  _board = _board->place_piece(9, Piece("rftd"));
+  _board = _board->place_piece(10, Piece("rfsd"));
+  _board = _board->place_piece(11, Piece("rfsl"));
 
-  _board = _board->place_piece(12, Piece("qhtl"));
-  _board = _board->place_piece(13, Piece("rftd"));
-  _board = _board->place_piece(14, Piece("rhsd"));
+  //_board = _board->place_piece(12, Piece("qhtl"));
+  //_board = _board->place_piece(13, Piece("rftd"));
+  //_board = _board->place_piece(14, Piece("rhsd"));
   //_board = _board->place_piece(15, Piece(""));
   */
 }

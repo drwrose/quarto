@@ -125,7 +125,7 @@ choose_piece(SearchResult &best_result, int me_player_index, bool show_log) cons
 
     SearchResult next_result;
     next_result.set_aux_piece(give_piece);
-    search_wins(next_result, me_player_index, max_me_levels, max_search_levels, give_piece, show_log);
+    search_wins(next_result, me_player_index, max_me_levels, max_search_levels, give_piece);
     result_list.push_back(next_result);
   }
 
@@ -381,9 +381,16 @@ calc_row_near_win(int a, int b, int c) {
 // FIlls max_me_levels with the maximum number of levels we continue
 // to search our own possible moves, and max_search_levels with the
 // the maximum number of search levels we continue to search anything
-// at all, based on the current state of the game.  (We limit these
-// only to save on time, so we don't spend years computing
-// quadrillions of moves.)
+// at all, based on the current state of the game.
+
+// We limit these only to save on time, so we don't spend years
+// computing quadrillions of moves.  By having max_me_levels as a
+// separate, shorter cutoff, we prioritize the deepest searching for
+// our opponent's moves over our own.  This means we may overlook some
+// forced-win opportunities, and we may see some options that
+// incorrectly appear to be forced-losses even though they have
+// escapes; but we won't accidentally overlook any forced-losses,
+// which is the most important.
 void Board::
 get_max_search_levels(int &max_me_levels, int &max_search_levels, int bias) const {
   int empty_squares = (num_squares - _num_used_pieces) + bias;
@@ -398,15 +405,20 @@ get_max_search_levels(int &max_me_levels, int &max_search_levels, int bias) cons
     max_search_levels = 7;
 
   } else if (empty_squares < 11) {
-    // Look a few more moves ahead, but not too many yet.
+    // Safer to look even deeper.
     max_me_levels = 4;
+    max_search_levels = 6;
+
+  } else if (empty_squares < 13) {
+    // Need to start looking deeper now.
+    max_me_levels = 3;
     max_search_levels = 6;
 
   } else if (empty_squares < 14) {
     // Look only a few moves ahead, but not so few that we overlook an
     // early win.
-    max_me_levels = 2;
-    max_search_levels = 6;
+    max_me_levels = 3;
+    max_search_levels = 4;
 
   } else if (empty_squares < 15) {
     // Just look ahead enough not to get screwed.
@@ -431,6 +443,9 @@ choose_from_result_list(SearchResult &best_result, const std::vector<SearchResul
   size_t best_mixed_ri = 0;
   double best_mixed_ratio = -1.0;
 
+  size_t best_loss_ri = 0;
+  int best_loss_wins = -1;
+
   for (size_t ri = 0; ri < result_list.size(); ++ri) {
     const SearchResult &next_result = result_list[ri];
     if (show_log) std::cerr << "  considering " << ri << ": " << next_result << ", " << next_result.get_aux_si() << ", " << next_result.get_aux_piece() << "\n";
@@ -442,7 +457,11 @@ choose_from_result_list(SearchResult &best_result, const std::vector<SearchResul
 
     } else if (next_result.is_forced_loss()) {
       // This is a forced loss.  Definitely don't pick this option.
-      continue;
+      // Unless of course we have to.
+      if (next_result.win_score() > best_loss_wins) {
+        best_loss_ri = ri;
+        best_loss_wins = next_result.win_score();
+      }
 
     } else if (next_result.is_not_loss()) {
       // This option might result in a tie, pick this if we have no
@@ -472,6 +491,11 @@ choose_from_result_list(SearchResult &best_result, const std::vector<SearchResul
   if (best_mixed_ratio >= 0.0) {
     if (show_log) std::cerr << "choosing best mixed option " << best_mixed_ri << ", ratio is " << best_mixed_ratio << "\n";
     best_result = result_list[best_mixed_ri];
+    return;
+  }
+  if (best_loss_wins >= 0) {
+    if (show_log) std::cerr << "choosing best loss option " << best_loss_ri << ", win score is " << best_loss_wins << "\n";
+    best_result = result_list[best_loss_ri];
     return;
   }
 

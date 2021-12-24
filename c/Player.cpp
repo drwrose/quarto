@@ -29,7 +29,7 @@ robot_choose_piece() {
 
   // We have to choose one now.
   SearchResult best_result;
-  return _quarto->get_board().choose_piece(best_result, _player_index);
+  return _quarto->get_board().choose_piece(best_result, _player_index, true);
 }
 
 // The AI chooses a square to place the indicated piece.  Returns si.
