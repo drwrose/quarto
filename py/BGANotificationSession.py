@@ -1,5 +1,10 @@
 import re
 import json
+import requests          # python -m pip install requests
+import websocket         # python -m pip install websocket-client
+import _thread
+import time
+from urllib.parse import urlencode
 
 class BGANotificationSession:
     eio = '3'  # Don't know what this is really?
@@ -32,6 +37,28 @@ class BGANotificationSession:
         r = self.bga.session.get(subscribe_url, params = subscribe_params)
         messages = self.parse_messages(r)
         self.sid = messages[0]['sid']
+
+        # Now start a websocket connection.  As a hack around the
+        # requests module refusing to format non-https URLs, we pass
+        # the URL as https originally, then change it to wss below.
+        websocket_url = 'https://r1.boardgamearena.net/3/r/'
+        websocket_params = {
+            'user' : self.bga.user_id,
+            'name' : self.bga.username,
+            'credentials' : self.bga.socketio_credentials,
+            'transport' : 'websocket',
+            'sid' : self.sid,
+            }
+
+        parser = requests.PreparedRequest()
+        parser.prepare_url(url = websocket_url, params = websocket_params)
+
+        # Change the url from https:// to wss://.
+        url = 'wss' + parser.url[5:]
+        print(url)
+
+        import pdb; pdb.set_trace()
+
 
     def parse_messages(self, r):
         """ Returns a dictionary of parsed JSON objects by id,
@@ -87,3 +114,22 @@ class BGANotificationSession:
         messages = self.parse_messages(r)
 
         #print(messages)
+
+    def __ws_message(ws, message):
+        print(message)
+
+    def __ws_error(ws, error):
+        print(error)
+
+    def __ws_close(ws, close_status_code, close_msg):
+        print("### closed ###")
+
+    def __ws_open(ws):
+        def run(*args):
+            for i in range(3):
+                time.sleep(1)
+                ws.send("Hello %d" % i)
+            time.sleep(1)
+            ws.close()
+            print("thread terminating...")
+        _thread.start_new_thread(run, ())

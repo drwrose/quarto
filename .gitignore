@@ -1,2 +1,4 @@
 c/build
+py/bga_credentials.txt
 *~
+*.pyc
