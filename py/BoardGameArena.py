@@ -2,8 +2,11 @@ import requests                 # python -m pip install requests
 from bs4 import BeautifulSoup   # python -m pip install beautifulsoup4
 import os
 import time
-
+import logging
 from BGANotificationSession import BGANotificationSession
+
+from http.client import HTTPConnection
+#HTTPConnection.debuglevel = 1
 
 class BoardGameArena:
     """ This class maintains a session to BoardGameArena, via the
@@ -50,7 +53,7 @@ class BoardGameArena:
             message = 'Credentials not found in %s' % (credentials_filename)
             raise RuntimeError(message)
 
-        self.username = credentials[0].strip()
+        bga_username = credentials[0].strip()
         bga_password = credentials[1].strip()
 
         # We start by getting the login form, which we need to extract
@@ -63,7 +66,7 @@ class BoardGameArena:
         # Now we can post the username/password and log in.
         login_url = 'https://en.boardgamearena.com/account/account/login.html'
         login_data = {
-            'email' : self.username,
+            'email' : bga_username,
             'password' : bga_password,
             #'rememberme' : 'on',
             'csrf_token' : csrf_token,
@@ -75,6 +78,7 @@ class BoardGameArena:
             raise RuntimeError(message)
 
         infos = json['data']['infos']
+        self.user_name = infos['name']
         self.user_id = infos['id']
         self.socketio_credentials = infos['socketio_cred']
 
