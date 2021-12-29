@@ -231,16 +231,28 @@ class BGANotificationSession:
     def __raw_notification_received(self, notification_data):
         message_type, message_data = notification_data
         if message_type == 'bgamsg':
-            # Most (all?) messages will be of type bgamsg.  These
-            # have a payload which is further json-encoded.
-            print(repr(message_data))
+            # 'bgamsg' messages have a payload which is further
+            # json-encoded.
             bgamsg_data = json.loads(message_data)
             channel = bgamsg_data['channel']
             data = bgamsg_data['data']
             self.bgamsg_notification_received(channel, data)
+
+        elif message_type == 'join':
+            # 'join' messages just include a channel name.  Do we need
+            # to do anything else with this, or is this just a
+            # notification?
+            channel = message_data
+            print("Join channel %s" % (channel))
+
+        elif message_type == 'requestSpectators':
+            # 'requestSpectators' messages include a table_id.  Again,
+            # not sure if we need to do anything with this message.
+            table_id = int(message_data)
+            print("requestSpectators %s" % (table_id))
+
         else:
-            message = 'Unexpected message type %s from BGA: %s' % (message_type)
-            raise RuntimeError(message)
+            print("Unhandled message type %s from BGA: %s" % (message_type, message_data))
 
     def bgamsg_notification_received(self, channel, data):
         #print("thread notification on %s: %s" % (channel, data))
@@ -329,11 +341,13 @@ class BGANotificationSession:
             return
 
         # This should wake up the thread.
-        self.ws.close()
+        if self.ws:
+            self.ws.close()
 
         thread = self.ws_thread
         self.ws_thread = None
-        thread.join()
+        if thread:
+            thread.join()
 
     def __ws_thread_main(self):
         # Actually, this doesn't seem to run *forever*, just until the
