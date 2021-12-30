@@ -33,7 +33,7 @@ class BoardGameArena:
 
         self.login()
 
-        notification = self.create_notification_session(self.__basic_notification)
+        notification = self.create_notification_session(message_callback = self.__message_callback)
 
         # Now we can subscribe to the basic channels.
         notification.subscribe_channels(
@@ -121,14 +121,17 @@ class BoardGameArena:
 
         json_text = m.group(1)
         user_infos = json.loads(json_text)
-        table_ids = user_infos['table_infos']['tables'].keys()
-        print("Found tables %s" % (','.join(table_ids)))
-        for table_id in table_ids:
-            self.update_table(table_id)
+        table_ids = user_infos['table_infos']['tables']
+        if not table_ids:
+            print("No existing tables.")
+        else:
+            for table_id in table_ids:
+                print("Found table %s" % (table_id))
+                self.update_table(table_id)
 
-    def create_notification_session(self, message_callback):
+    def create_notification_session(self, message_callback = None, socketio_url = 'https://r2.boardgamearena.net', socketio_path = 'r'):
         """ Signs up for notifications of events from BGA. """
-        notification = BGANotificationSession(self, message_callback)
+        notification = BGANotificationSession(self, message_callback = message_callback, socketio_url = socketio_url, socketio_path = socketio_path)
         self.notifications.append(notification)
         return notification
 
@@ -161,11 +164,12 @@ class BoardGameArena:
         finally:
             self.cleanup()
 
-    def __basic_notification(self, channel, data):
+    def __message_callback(self, channel, bgamsg_data):
         """ A notification is received on the named channel, one of
         the ones we subscribed to in the constructor. """
 
         #print("Basic notification on %s: %s" % (channel, data))
+        data = bgamsg_data['data']
         if channel == '/player/p%s' % (self.user_id):
             data_dict = data[0]
             notification_type = data_dict['type']

@@ -28,9 +28,12 @@ class BGANotificationSession:
     # about here.
     notification_msgid = 42
 
-    def __init__(self, bga, message_callback):
+    def __init__(self, bga, message_callback = None, socketio_url = None, socketio_path = None):
         self.bga = bga
         self.message_callback = message_callback
+        self.socketio_url = socketio_url
+        self.socketio_path = socketio_path
+        self.subscribe_url = '%s/%s/' % (self.socketio_url, self.socketio_path)
 
         self.ws = None
         self.ws_thread = None
@@ -40,10 +43,11 @@ class BGANotificationSession:
         # pulls them out.
         self.notification_queue = queue.Queue()
 
+        self.subscribed_channels = set()
+
         # Get the session ID (sid) so we can open a websocket and
         # subscribe to topics for that websocket.
 
-        subscribe_url = 'https://r2.boardgamearena.net/r/'
         subscribe_params = {
             'user' : self.bga.user_id,
             'name' : self.bga.user_name,
@@ -53,7 +57,7 @@ class BGANotificationSession:
             #'t' : 'Ntu9pqW',
             }
 
-        r = self.bga.session.get(subscribe_url, params = subscribe_params)
+        r = self.bga.session.get(self.subscribe_url, params = subscribe_params)
         messages = dict(self.parse_messages(r.text))
 
         comm_protocol = messages[0]
@@ -71,6 +75,10 @@ class BGANotificationSession:
         """ Stops any threads and closes any sockets, in preparation
         for shutdown. """
 
+        for channel_name in self.subscribed_channels:
+            print("Cleaning up %s on %s:%s" % (channel_name, self.sid, self.subscribe_url))
+        self.subscribed_channels = set()
+
         self.__stop_ping()
         self.stop_ws()
 
@@ -79,7 +87,6 @@ class BGANotificationSession:
         Parameters consist of one or more strings that represent
         channel names. """
 
-        subscribe_url = 'https://r2.boardgamearena.net/r/'
         subscribe_params = {
             'user' : self.bga.user_id,
             'name' : self.bga.user_name,
@@ -95,14 +102,15 @@ class BGANotificationSession:
         subscribe_text = self.format_messages(subscribe_messages)
         #print(subscribe_text)
 
-        r = self.bga.session.post(subscribe_url, params = subscribe_params, data = subscribe_text)
+        r = self.bga.session.post(self.subscribe_url, params = subscribe_params, data = subscribe_text)
         #print(r.url)
         if r.status_code != 200:
             message = "Unable to subscribe to topics: %s" % (r.text)
             raise RuntimeError(message)
 
         for channel_name in channels:
-            print("Subscribed to %s" % (channel_name))
+            print("Subscribed to %s on %s:%s" % (channel_name, self.sid, self.subscribe_url))
+            self.subscribed_channels.add(channel_name)
 
         #print(r.text)
 
@@ -179,8 +187,8 @@ class BGANotificationSession:
 
         try:
             while True:
-                channel, data = self.notification_queue.get(block = block, timeout = timeout)
-                self.message_callback(channel, data)
+                channel, bgamsg_data = self.notification_queue.get(block = block, timeout = timeout)
+                self.message_callback(channel, bgamsg_data)
         except queue.Empty:
             return
 
@@ -190,7 +198,7 @@ class BGANotificationSession:
         dispatch it appropriately. """
 
         try:
-            #print("__ws_message(%s): %s" % (ws, text))
+            #print("Got message on %s:%s" % (self.sid, self.subscribe_url))
 
             # Get the integer message_id from the beginning of the message.
             pattern = re.compile('([0-9]+)')
@@ -221,7 +229,7 @@ class BGANotificationSession:
                 self.__raw_notification_received(data)
 
             else:
-                print("Unknown message id %s %s" % (msgid, text))
+                print("Unhandled message id %s %s" % (msgid, text))
 
         except:
             print("Exception in message handler")
@@ -231,12 +239,14 @@ class BGANotificationSession:
     def __raw_notification_received(self, notification_data):
         message_type, message_data = notification_data
         if message_type == 'bgamsg':
-            # 'bgamsg' messages have a payload which is further
-            # json-encoded.
-            bgamsg_data = json.loads(message_data)
+            # 'bgamsg' messages have a payload which might or might
+            # not be further json-encoded.
+            if isinstance(message_data, str):
+                bgamsg_data = json.loads(message_data)
+            else:
+                bgamsg_data = message_data
             channel = bgamsg_data['channel']
-            data = bgamsg_data['data']
-            self.bgamsg_notification_received(channel, data)
+            self.bgamsg_notification_received(channel, bgamsg_data)
 
         elif message_type == 'join':
             # 'join' messages just include a channel name.  Do we need
@@ -254,10 +264,10 @@ class BGANotificationSession:
         else:
             print("Unhandled message type %s from BGA: %s" % (message_type, message_data))
 
-    def bgamsg_notification_received(self, channel, data):
+    def bgamsg_notification_received(self, channel, bgamsg_data):
         #print("thread notification on %s: %s" % (channel, data))
         with self.bga.notification_cvar:
-            self.notification_queue.put((channel, data))
+            self.notification_queue.put((channel, bgamsg_data))
             self.bga.notification_cvar.notify()
 
     def __ws_error(self, ws, error):
@@ -265,10 +275,15 @@ class BGANotificationSession:
 
         # Maybe closing the socket when we get an error notification
         # is a good idea, to help us exit cleanly?
-        self.ws.close()
+        ws = self.ws
+        if ws:
+            ws.close()
+            self.ws = None
 
     def __ws_close(self, ws, close_status_code, close_msg):
         print("__ws_close(%s)" % (ws))
+        if ws == self.ws:
+            self.ws = None
 
         self.__stop_ping()
 
@@ -290,7 +305,11 @@ class BGANotificationSession:
             text = '%d%s' % (msgid, json_text)
 
         #print("send %s" % (repr(text)))
-        self.ws.send(text)
+        ws = self.ws
+        if ws:
+            ws.send(text)
+        else:
+            print("Unable to send message, socket is closed")
 
     def start_ws(self):
         """ Open a websocket connection and start the ws thread to
@@ -299,12 +318,6 @@ class BGANotificationSession:
         assert not self.ws
         assert not self.ws_thread
 
-        # We use the requests module to format the URL and its
-        # parameters.  As a hack around the fact that the requests
-        # module refuses to format parameters for non-http URLs, we
-        # pass the URL as https originally, then change it to wss
-        # below.
-        websocket_url = 'https://r2.boardgamearena.net/r/'
         websocket_params = {
             'user' : self.bga.user_id,
             'name' : self.bga.user_name,
@@ -315,9 +328,10 @@ class BGANotificationSession:
             }
 
         parser = requests.PreparedRequest()
-        parser.prepare_url(url = websocket_url, params = websocket_params)
+        parser.prepare_url(url = self.subscribe_url, params = websocket_params)
 
-        # Change the url from https:// to wss://.
+        # Change the url in subscribe_url from https:// to wss://.
+        assert(parser.url.startswith('https://'))
         url = 'wss' + parser.url[5:]
         #print(url)
 
@@ -341,8 +355,10 @@ class BGANotificationSession:
             return
 
         # This should wake up the thread.
-        if self.ws:
-            self.ws.close()
+        ws = self.ws
+        if ws:
+            ws.close()
+            self.ws = None
 
         thread = self.ws_thread
         self.ws_thread = None
@@ -352,8 +368,10 @@ class BGANotificationSession:
     def __ws_thread_main(self):
         # Actually, this doesn't seem to run *forever*, just until the
         # socket is closed.
-        self.ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
-
+        ws = self.ws
+        if ws:
+            ws.run_forever(sslopt = {"cert_reqs" : ssl.CERT_NONE})
+        print ("Socket closed on %s:%s" % (self.sid, self.subscribe_url))
         self.ws = None
 
     def __start_ping(self):
