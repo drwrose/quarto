@@ -378,4 +378,10 @@ class BGANotificationSession:
     def __ping_thread_main(self):
         while self.ping_thread:
             self.send_message(self.client_ping_msgid)
-            time.sleep(self.ping_interval / 1000.0)
+
+            # Sleep a little at a time instead of all at once, so
+            # we can notice if we've been stopped by the parent.
+            sleep_time = self.ping_interval / 1000.0
+            stop_time = time.time() + sleep_time
+            while time.time() < stop_time and self.ping_thread:
+                time.sleep(0.5)
