@@ -128,7 +128,7 @@ class BoardGameArena:
             for table_id, args in table_ids.items():
                 game_name = args.get('game_name', None)
                 print("Found table %s, %s" % (table_id, game_name))
-                self.update_table(table_id, game_name)
+                self.update_table(table_id, game_name = game_name)
 
     def create_notification_session(self, message_callback = None, socketio_url = 'https://r2.boardgamearena.net', socketio_path = 'r'):
         """ Signs up for notifications of events from BGA. """
@@ -165,7 +165,7 @@ class BoardGameArena:
         finally:
             self.cleanup()
 
-    def __message_callback(self, channel, bgamsg_data):
+    def __message_callback(self, channel, bgamsg_data, live):
         """ A notification is received on the named channel, one of
         the ones we subscribed to in the constructor. """
 
@@ -174,25 +174,22 @@ class BoardGameArena:
         if channel == '/player/p%s' % (self.user_id):
             data_dict = data[0]
             notification_type = data_dict['type']
+            args = data_dict.get('args', {})
             if notification_type == 'updatePlayerTableStatus':
-                self.update_player_table_status(data_dict['args'])
+                self.update_player_table_status(args)
             elif notification_type == 'playerstatus':
-                args = data_dict['args']
                 print("player_status %s is %s" % (args['player_name'], args['player_status']))
             elif notification_type == 'groupUpdate':
-                args = data_dict['args']
                 group_id = args['group']
                 print("groupUpdate for %s" % (group_id))
             elif notification_type == 'matchmakingGameStart':
-                args = data_dict['args']
                 table_id = args['table_id']
                 print("matchmakingGameStart for %s" % (table_id))
             elif notification_type == 'shouldAcceptGameStart':
-                args = data_dict['args']
                 table_id = args['table_id']
                 print("shouldAcceptGameStart for %s" % (table_id))
+                self.update_table(table_id)
             elif notification_type == 'proposeRematch':
-                args = data_dict['args']
                 table_id = args['table_id']
                 print("proposeRematch for %s" % (table_id))
             else:
@@ -206,12 +203,16 @@ class BoardGameArena:
         table_id = args.get('table_id', None)
         print("update_player_table_status: %s, %s at table %s" % (status, game_name, table_id))
 
-        self.update_table(table_id, game_name)
+        self.update_table(table_id, game_name = game_name)
 
-    def update_table(self, table_id, game_name):
+    def update_table(self, table_id, game_name = None):
         if table_id in self.tables:
             # Already there, but maybe there's an update in status.
             self.tables[table_id].fetch_table_infos()
+            return
+
+        if game_name is None:
+            # Ignore this, we don't need to create a game we don't know.
             return
 
         # Create a new table entry.

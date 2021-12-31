@@ -34,6 +34,7 @@ class BGATable:
         """ We can call this as soon as we establish an actual
         gameserver, not '0'. """
 
+        print("Got gameserver %s, setting up notifications" % (self.gameserver))
         self.fetch_gs_socketio()
         self.notification = self.bga.create_notification_session(
             message_callback = self.__channel_notification,
@@ -46,7 +47,7 @@ class BGATable:
             )
 
         self.fetch_notification_history()
-        self.wakeup_players()
+        self.consider_turn()
 
     def cleanup(self):
         self.bga.close_notification_session(self.notification)
@@ -114,7 +115,7 @@ class BGATable:
         print("Found %s past notifications" % (len(past_notifications)))
         for bgamsg_data in past_notifications:
             channel = bgamsg_data['channel']
-            self.__channel_notification(channel, bgamsg_data)
+            self.__channel_notification(channel, bgamsg_data, False)
 
     def __update_table_infos(self, table_infos):
         """ A new table_infos dictionary has been acquired.  Store it,
@@ -123,6 +124,8 @@ class BGATable:
         self.table_infos = table_infos
         self.gameserver = self.table_infos['gameserver']
         self.game_name = self.table_infos['game_name']
+
+        print("self.gameserver = %s" % (self.gameserver))
 
         if not self.gs_socketio_url and self.gameserver != '0':
             # If we have a real gameserver now, then sign up for notifications.
@@ -202,7 +205,7 @@ class BGATable:
         assert(r.status_code == 200)
         print(r.text)
 
-    def __channel_notification(self, channel, bgamsg_data):
+    def __channel_notification(self, channel, bgamsg_data, live):
         """ A notification is received on the named channel, one of
         the ones we subscribed to in the constructor. """
 
@@ -216,7 +219,7 @@ class BGATable:
                     self.last_packet_id = packet_id
                 for data_dict in data:
                     notification_type = data_dict['type']
-                    self.table_notification(notification_type, data_dict)
+                    self.table_notification(notification_type, data_dict, live)
             else:
                 print("Ignoring out-of-sequence notification %s" % (notification_type))
         elif channel == '/table/ts%s' % (self.table_id):
@@ -230,7 +233,7 @@ class BGATable:
         else:
             print("Unhandled table notification on %s: %s" % (channel, data))
 
-    def table_notification(self, notification_type, data_dict):
+    def table_notification(self, notification_type, data_dict, live):
         if notification_type == 'tableInfosChanged':
             print("tableInfosChanged")
             table_infos = data_dict['args']
@@ -246,32 +249,30 @@ class BGATable:
             print("simpleNote: %s" % (note))
         elif notification_type == 'yourturnack':
             print("yourturnack")
-            self.wakeup_players()
         elif notification_type == 'wakeupPlayers':
             print("wakeupPlayers")
-            self.wakeup_players()
         elif notification_type == 'gameStateChange':
-            print("gameStateChange")
-            self.update_game_state(data_dict['args'])
+            print("gameStateChange, id is %s, activePlayer is %s, live is %s" % (self.game_state.get('id', None), self.game_state.get('active_player', None), live))
+            self.update_game_state(data_dict['args'], live)
         elif notification_type == 'updateReflexionTime':
-            print("gameStateChange")
+            print("updateReflexionTime")
         elif notification_type == 'finalScore':
             print("finalScore")
         else:
             print("Unhandled table notification type %s: %s" % (notification_type, data_dict))
 
-    def update_game_state(self, game_state):
+    def update_game_state(self, game_state, live):
         self.game_state = game_state
+        if live:
+            self.consider_turn()
 
-    def wakeup_players(self):
-        """ Called in response to a yourturnack or wakeupPlayers
-        message, this should look around and see if a turn needs to be
-        played. """
+    def consider_turn(self):
+        """ Called whenever the game changes state, this should look
+        around and see if a turn needs to be played. """
 
-        print("wakeup_players")
-        if int(self.game_state['active_player']) == int(self.bga.user_id):
+        print("consider_turn")
+        if int(self.game_state.get('active_player', 0)) == int(self.bga.user_id):
             self.my_turn()
 
     def my_turn(self):
         print("my_turn")
-        import pdb; pdb.set_trace()

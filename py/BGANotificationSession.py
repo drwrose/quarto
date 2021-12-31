@@ -188,7 +188,7 @@ class BGANotificationSession:
         try:
             while True:
                 channel, bgamsg_data = self.notification_queue.get(block = block, timeout = timeout)
-                self.message_callback(channel, bgamsg_data)
+                self.message_callback(channel, bgamsg_data, True)
         except queue.Empty:
             return
 

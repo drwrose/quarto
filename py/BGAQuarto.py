@@ -2,8 +2,10 @@ from BGATable import BGATable
 import random
 
 class BGAQuarto(BGATable):
-    select_piece_id = 10
-    place_piece_id = 12
+    select_state_id = 10
+    animation_state_id = 11
+    place_state_id = 12
+    game_over_state_id = 99
 
     def __init__(self, bga, table_id):
         self.selected_piece_number = None
@@ -17,7 +19,7 @@ class BGAQuarto(BGATable):
 
         super(BGAQuarto, self).__init__(bga, table_id)
 
-    def table_notification(self, notification_type, data_dict):
+    def table_notification(self, notification_type, data_dict, live):
         if notification_type == 'placePiece':
             args = data_dict['args']
             piece_number = int(args['number'])
@@ -31,17 +33,28 @@ class BGAQuarto(BGATable):
             print("selectPiece %s" % (piece_number))
             self.someone_selected_piece(piece_number)
         else:
-            super(BGAQuarto, self).table_notification(notification_type, data_dict)
+            super(BGAQuarto, self).table_notification(notification_type, data_dict, live)
 
     def my_turn(self):
-        if self.game_state['id'] == self.select_piece_id:
+        if 'id' not in self.game_state:
+            # Game hasn't started yet, really.
+            super(BGAQuarto, self).my_turn()
+            return
+
+        state_id = int(self.game_state['id'])
+        if state_id == self.select_state_id:
             print("my turn to select piece")
             self.me_select_piece()
-        elif self.game_state['id'] == self.place_piece_id:
+        elif state_id == self.place_state_id:
             print("my turn to place piece")
             self.me_place_piece()
+        elif state_id == self.animation_state_id:
+            print("animation state")
+        elif state_id == self.game_over_state_id:
+            print("game over state")
         else:
             print("my turn to do something else? %s" % (self.game_state,))
+            super(BGAQuarto, self).my_turn()
 
     def me_select_piece(self):
         assert(self.unused_pieces)
