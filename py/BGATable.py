@@ -9,33 +9,32 @@ import ssl
 import traceback
 import queue
 
+from http.client import HTTPConnection
+#HTTPConnection.debuglevel = 1
+
 class BGATable:
     """ Manages the connection to a specific "table" or game at
     BGA. """
 
-    #https://boardgamearena.com/6/quarto?table=227990980
-
-    #30:42["join","/table/t227776934"]
-    #https://boardgamearena.com/5/quarto/quarto/selectPiece.html?number=1&table=227776934&dojo.preventCache=1640820986745
-
-    # Pushing moves
-    #https://boardgamearena.com/4/quarto/quarto/selectPiece.html?number=1&table=226600309&dojo.preventCache=1640462571803
-    #https://boardgamearena.com/4/quarto/quarto/placePiece.html?x=1&y=4&table=226600309&dojo.preventCache=1640462661462
-
     def __init__(self, bga, table_id):
-        print("Creating table %s for %s" % (self, table_id))
+        print("Creating %s for %s" % (self.__class__.__name__, table_id))
         self.bga = bga
         self.table_id = table_id
         self.table_infos = None
         self.last_packet_id = 0
         self.game_state = {}
 
+        self.notification = None
         self.gs_socketio_url = None
         self.gs_socketio_path = None
 
         self.fetch_table_infos()
-        self.fetch_gs_socketio()
 
+    def setup_notifications(self):
+        """ We can call this as soon as we establish an actual
+        gameserver, not '0'. """
+
+        self.fetch_gs_socketio()
         self.notification = self.bga.create_notification_session(
             message_callback = self.__channel_notification,
             socketio_url = self.gs_socketio_url,
@@ -47,6 +46,7 @@ class BGATable:
             )
 
         self.fetch_notification_history()
+        self.wakeup_players()
 
     def cleanup(self):
         self.bga.close_notification_session(self.notification)
@@ -82,15 +82,19 @@ class BGATable:
         # gameui.gs_socketio_path in that returned page.
         m = re.search('[ \t]+gameui[.]gs_socketio_url=(.*);', r.text)
         if m is None:
-            print("gs_socketio_url not found")
-        else:
-            self.gs_socketio_url = ast.literal_eval(m.group(1))
+            message = "gs_socketio_url not found"
+            print(message); import pdb; pdb.set_trace()
+            raise RuntimeError(message)
+
+        self.gs_socketio_url = ast.literal_eval(m.group(1))
 
         m = re.search('[ \t]+gameui[.]gs_socketio_path=(.*);', r.text)
         if m is None:
-            print("gs_socketio_path not found")
-        else:
-            self.gs_socketio_path = ast.literal_eval(m.group(1))
+            message = "gs_socketio_path not found"
+            print(message); import pdb; pdb.set_trace()
+            raise RuntimeError(message)
+
+        self.gs_socketio_path = ast.literal_eval(m.group(1))
 
     def fetch_notification_history(self):
         # TODO: Is the game_name really repeated, or does the second
@@ -119,6 +123,10 @@ class BGATable:
         self.table_infos = table_infos
         self.gameserver = self.table_infos['gameserver']
         self.game_name = self.table_infos['game_name']
+
+        if not self.gs_socketio_url and self.gameserver != '0':
+            # If we have a real gameserver now, then sign up for notifications.
+            self.setup_notifications()
 
         status = self.table_infos['status']
         print("updated table_info for %s, status = %s" % (self.table_id, status))
@@ -203,11 +211,14 @@ class BGATable:
         #print("Table notification on %s, packet_id %s" % (channel, packet_id))
 
         if channel == '/table/t%s' % (self.table_id):
-            if packet_id > self.last_packet_id:
-                self.last_packet_id = packet_id
+            if packet_id == 0 or packet_id > self.last_packet_id:
+                if packet_id > self.last_packet_id:
+                    self.last_packet_id = packet_id
                 for data_dict in data:
                     notification_type = data_dict['type']
                     self.table_notification(notification_type, data_dict)
+            else:
+                print("Ignoring out-of-sequence notification %s" % (notification_type))
         elif channel == '/table/ts%s' % (self.table_id):
             data_dict = data[0]
             notification_type = data_dict['type']
@@ -230,21 +241,37 @@ class BGATable:
             decision_type = data_dict.get('decision_type', None)
             print("tableDecision: %s" % (decision_type))
             print(data_dict)
-        elif notification_type == 'simpleNote':
+        elif notification_type in ['simpleNote', 'simpleNode']:
             note = data_dict.get('log')
             print("simpleNote: %s" % (note))
         elif notification_type == 'yourturnack':
             print("yourturnack")
+            self.wakeup_players()
         elif notification_type == 'wakeupPlayers':
             print("wakeupPlayers")
+            self.wakeup_players()
         elif notification_type == 'gameStateChange':
             print("gameStateChange")
             self.update_game_state(data_dict['args'])
         elif notification_type == 'updateReflexionTime':
             print("gameStateChange")
-            self.reflexion_time = data_dict['args']
+        elif notification_type == 'finalScore':
+            print("finalScore")
         else:
             print("Unhandled table notification type %s: %s" % (notification_type, data_dict))
 
     def update_game_state(self, game_state):
         self.game_state = game_state
+
+    def wakeup_players(self):
+        """ Called in response to a yourturnack or wakeupPlayers
+        message, this should look around and see if a turn needs to be
+        played. """
+
+        print("wakeup_players")
+        if int(self.game_state['active_player']) == int(self.bga.user_id):
+            self.my_turn()
+
+    def my_turn(self):
+        print("my_turn")
+        import pdb; pdb.set_trace()

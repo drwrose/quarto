@@ -7,7 +7,7 @@ import threading
 import re
 import json
 from BGANotificationSession import BGANotificationSession
-from BGATable import BGATable
+from BGAQuarto import BGAQuarto
 
 from http.client import HTTPConnection
 #HTTPConnection.debuglevel = 1
@@ -125,9 +125,10 @@ class BoardGameArena:
         if not table_ids:
             print("No existing tables.")
         else:
-            for table_id in table_ids:
-                print("Found table %s" % (table_id))
-                self.update_table(table_id)
+            for table_id, args in table_ids.items():
+                game_name = args.get('game_name', None)
+                print("Found table %s, %s" % (table_id, game_name))
+                self.update_table(table_id, game_name)
 
     def create_notification_session(self, message_callback = None, socketio_url = 'https://r2.boardgamearena.net', socketio_path = 'r'):
         """ Signs up for notifications of events from BGA. """
@@ -205,16 +206,23 @@ class BoardGameArena:
         table_id = args.get('table_id', None)
         print("update_player_table_status: %s, %s at table %s" % (status, game_name, table_id))
 
-        self.update_table(table_id)
+        self.update_table(table_id, game_name)
 
-    def update_table(self, table_id):
+    def update_table(self, table_id, game_name):
         if table_id in self.tables:
             # Already there, but maybe there's an update in status.
             self.tables[table_id].fetch_table_infos()
             return
 
         # Create a new table entry.
-        table = BGATable(self, table_id)
+        table = None
+        if game_name == 'quarto':
+            table = BGAQuarto(self, table_id)
+
+        if not table:
+            print("Unable to create table of type %s" % (game_name))
+            return
+
         self.tables[table_id] = table
 
     def close_table(self, table):
