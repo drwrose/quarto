@@ -7,6 +7,26 @@ class BGAQuarto(BGATable):
     place_state_id = 12
     game_over_state_id = 99
 
+    # Piece number assignment according to BGA.
+    pieces = [
+        (1, 'lqtf'),
+        (2, 'lrsh'),
+        (3, 'lrsf'),
+        (4, 'lrth'),
+        (5, 'lrtf'),
+        (6, 'lqsh'),
+        (7, 'lqsf'),
+        (8, 'lqth'),
+        (9, 'dqtf'),
+        (10, 'drsh'),
+        (11, 'drsf'),
+        (12, 'drth'),
+        (13, 'drtf'),
+        (14, 'dqsh'),
+        (15, 'dqsf'),
+        (16, 'dqth'),
+        ]
+
     def __init__(self, bga, table_id):
         self.selected_piece_number = None
 
