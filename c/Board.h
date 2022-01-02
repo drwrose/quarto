@@ -21,9 +21,17 @@ public:
   Board(const Board &copy, unsigned int si, Piece piece);
   ~Board();
 
-  static int get_si(unsigned int ri, unsigned int ci) {
+  static unsigned int get_si(unsigned int ri, unsigned int ci) {
     assert(ri < num_rows && ci < num_cols);
     return ri * num_rows + ci;
+  }
+  static unsigned int get_ri(unsigned int si) {
+    assert(si < num_squares);
+    return si / num_rows;
+  }
+  static unsigned int get_ci(unsigned int si) {
+    assert(si < num_squares);
+    return si % num_rows;
   }
 
   static BoardMask get_mask(unsigned int ri, unsigned int ci) {

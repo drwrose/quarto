@@ -23,6 +23,9 @@ public:
   }
 
   bool operator == (const Piece &other) const { return _code == other._code; }
+  bool operator != (const Piece &other) const { return !operator == (other); }
+
+  Code hash() const { return _code; }
 
   PieceMask get_bit() const {
     return ((PieceMask)1 << _code);

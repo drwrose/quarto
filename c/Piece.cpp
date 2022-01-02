@@ -13,17 +13,17 @@ format_desc(Code code) {
   std::ostringstream strm;
   if (num_attribs >= 4) {
     if (code & 0x8) {
-      strm << "r";
+      strm << "l";
     } else {
-      strm << "q";
+      strm << "d";
     }
   }
 
   if (num_attribs >= 3) {
     if (code & 0x4) {
-      strm << "f";
+      strm << "r";
     } else {
-      strm << "h";
+      strm << "q";
     }
   }
 
@@ -36,9 +36,9 @@ format_desc(Code code) {
   }
 
   if (code & 0x1) {
-    strm << "l";
+    strm << "f";
   } else {
-    strm << "d";
+    strm << "h";
   }
 
   return strm.str();
@@ -52,55 +52,35 @@ parse_desc(const std::string &desc) {
 
   Code code = 0;
 
-  size_t p = 0;
-
-  if (num_attribs >= 4) {
+  for (size_t p = 0; p < desc.length(); ++p) {
     switch (tolower(desc[p])) {
-    case 'r':
+    case 'l':
       code |= 0x8;
+      break;
+    case 'd':
+      break;
+
+    case 'r':
+      code |= 0x4;
       break;
     case 'q':
       break;
-    default:
-      throw std::runtime_error("Invalid desc");
-    }
-    ++p;
-  }
 
-  if (num_attribs >= 3) {
-    switch (tolower(desc[p])) {
-    case 'f':
-      code |= 0x4;
-      break;
-    case 'h':
-      break;
-    default:
-      throw std::runtime_error("Invalid desc");
-    }
-    ++p;
-  }
-
-  if (num_attribs >= 2) {
-    switch (tolower(desc[p])) {
     case 's':
       code |= 0x2;
       break;
     case 't':
       break;
+
+    case 'f':
+      code |= 0x1;
+      break;
+    case 'h':
+      break;
+
     default:
       throw std::runtime_error("Invalid desc");
     }
-    ++p;
-  }
-
-  switch (tolower(desc[p])) {
-  case 'l':
-    code |= 0x1;
-    break;
-  case 'd':
-    break;
-  default:
-    throw std::runtime_error("Invalid desc");
   }
 
   return code;

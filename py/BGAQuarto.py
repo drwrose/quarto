@@ -1,5 +1,6 @@
 from BGATable import BGATable
 import random
+from import_pyquarto import Piece, Quarto, Board, Player
 
 class BGAQuarto(BGATable):
     select_state_id = 10
@@ -9,26 +10,34 @@ class BGAQuarto(BGATable):
 
     # Piece number assignment according to BGA.
     pieces = [
-        (1, 'lqtf'),
-        (2, 'lrsh'),
-        (3, 'lrsf'),
-        (4, 'lrth'),
-        (5, 'lrtf'),
-        (6, 'lqsh'),
-        (7, 'lqsf'),
-        (8, 'lqth'),
-        (9, 'dqtf'),
-        (10, 'drsh'),
-        (11, 'drsf'),
-        (12, 'drth'),
-        (13, 'drtf'),
-        (14, 'dqsh'),
-        (15, 'dqsf'),
-        (16, 'dqth'),
+        (1, Piece('lqtf')),
+        (2, Piece('lrsh')),
+        (3, Piece('lrsf')),
+        (4, Piece('lrth')),
+        (5, Piece('lrtf')),
+        (6, Piece('lqsh')),
+        (7, Piece('lqsf')),
+        (8, Piece('lqth')),
+        (9, Piece('dqtf')),
+        (10, Piece('drsh')),
+        (11, Piece('drsf')),
+        (12, Piece('drth')),
+        (13, Piece('drtf')),
+        (14, Piece('dqsh')),
+        (15, Piece('dqsf')),
+        (16, Piece('dqth')),
         ]
+
+    piece_number_to_piece = {}
+    piece_to_piece_number = {}
+    for piece_number, piece in pieces:
+        piece_number_to_piece[piece_number] = piece
+        piece_to_piece_number[piece] = piece_number
 
     def __init__(self, bga, table_id):
         self.selected_piece_number = None
+
+        self.quarto = Quarto()
 
         # Temporary Python structures to play randomly
         self.unused_pieces = list(range(1, 17))
@@ -78,9 +87,11 @@ class BGAQuarto(BGATable):
 
     def me_select_piece(self):
         assert(self.unused_pieces)
-        piece_number = random.choice(self.unused_pieces)
 
-        #https://boardgamearena.com/4/quarto/quarto/selectPiece.html?number=1&table=226600309&dojo.preventCache=1640462571803
+        me = self.quarto.get_current_give_player()
+
+        piece = me.robot_choose_piece()
+        piece_number = self.piece_to_piece_number[piece]
 
         select_url = 'https://boardgamearena.com/%s/%s/%s/selectPiece.html' % (self.gameserver, self.game_name, self.game_name)
         select_params = {
@@ -93,14 +104,18 @@ class BGAQuarto(BGATable):
 
     def me_place_piece(self):
         assert(self.unused_squares)
-        x, y = random.choice(self.unused_squares)
 
-        #https://boardgamearena.com/4/quarto/quarto/placePiece.html?x=1&y=4&table=226600309&dojo.preventCache=1640462661462
+        me = self.quarto.get_current_place_player()
+        piece = self.piece_number_to_piece[self.selected_piece_number]
+
+        si = me.robot_choose_square(piece)
+        ri = Board.get_ri(si)
+        ci = Board.get_ri(si)
 
         select_url = 'https://boardgamearena.com/%s/%s/%s/placePiece.html' % (self.gameserver, self.game_name, self.game_name)
         select_params = {
-            'x' : x,
-            'y' : y,
+            'x' : ci + 1,
+            'y' : ri + 1,
             'table' : self.table_id,
             }
 
@@ -116,3 +131,7 @@ class BGAQuarto(BGATable):
         assert(piece_number == self.selected_piece_number)
         assert((x, y) in self.unused_squares)
         self.unused_squares.remove((x, y))
+
+        si = Board.get_si(y - 1, x - 1)
+        piece = self.piece_number_to_piece[piece_number]
+        self.quarto.place_piece(si, piece)
