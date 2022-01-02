@@ -9,7 +9,7 @@
 #include <iostream>
 #include <vector>
 
-class Board : public std::enable_shared_from_this<Board> {
+class Board {
 public:
   static constexpr unsigned int num_rows = 4;
   static constexpr unsigned int num_cols = 4;

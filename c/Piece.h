@@ -29,6 +29,7 @@ public:
   }
 
   Code get_code() const { return _code; }
+  std::string get_desc() const { return format_desc(get_code()); }
 
   static std::string format_desc(Code code);
   static Code parse_desc(const std::string &desc);
