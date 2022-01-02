@@ -1,22 +1,16 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.22)
 project(quarto LANGUAGES CXX C)
 
 # SWIG: use standard target name.
-#if(POLICY CMP0078)
-#  cmake_policy(SET CMP0078 NEW)
-#endif()
+if(POLICY CMP0078)
+  cmake_policy(SET CMP0078 NEW)
+endif()
 
 # Scan for dependencies
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 # Tell CMake we need to use C++ 11.
-if (CMAKE_VERSION VERSION_LESS "3.1")
-  if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11")
-  endif ()
-else ()
-  set (CMAKE_CXX_STANDARD 11)
-endif ()
+set(CMAKE_CXX_STANDARD 11)
 
 # Options
 
@@ -39,9 +33,11 @@ if (BUILD_PYQUARTO)
   include_directories("${CMAKE_SOURCE_DIR}")
   link_directories(${Python_LIBRARY_DIRS})
 
+  SET(CMAKE_SWIG_FLAGS "-threads")
+
   set_property(SOURCE ${QUARTO_SWIG} PROPERTY CPLUSPLUS ON)
   swig_add_library(pyquarto TYPE SHARED LANGUAGE PYTHON SOURCES ${QUARTO_SWIG} ${QUARTO_SOURCES})
-  #target_link_libraries(_pyquarto ${PYTHON_LIBRARIES} ${WS2_LIBRARY} ${CMAKE_THREAD_LIBS_INIT})
+  #target_link_libraries(pyquarto ${PYTHON_LIBRARIES} ${WS2_LIBRARY} ${CMAKE_THREAD_LIBS_INIT})
 
 endif (BUILD_PYQUARTO)
 

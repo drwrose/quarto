@@ -71,6 +71,7 @@ public:
   void choose_square_and_piece(unsigned int &chosen_si, Piece &chosen_piece, int me_player_index, Piece give_piece) const;
 
   void write(std::ostream &out) const;
+  std::string get_formatted_output() const;
 
 private:
   void calc_win();

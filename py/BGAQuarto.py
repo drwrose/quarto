@@ -1,5 +1,6 @@
 from BGATable import BGATable
 import random
+import json
 from import_pyquarto import Piece, Quarto, Board, Player
 
 class BGAQuarto(BGATable):
@@ -38,13 +39,6 @@ class BGAQuarto(BGATable):
         self.selected_piece_number = None
 
         self.quarto = Quarto()
-
-        # Temporary Python structures to play randomly
-        self.unused_pieces = list(range(1, 17))
-        self.unused_squares = []
-        for x in range(1, 5):
-            for y in range(1, 5):
-                self.unused_squares.append((x, y))
 
         super(BGAQuarto, self).__init__(bga, table_id)
 
@@ -86,12 +80,14 @@ class BGAQuarto(BGATable):
             super(BGAQuarto, self).my_turn()
 
     def me_select_piece(self):
-        assert(self.unused_pieces)
-
         me = self.quarto.get_current_give_player()
+
+        print(self.quarto.get_board().get_formatted_output())
 
         piece = me.robot_choose_piece()
         piece_number = self.piece_to_piece_number[piece]
+
+        print("Robot chose piece %s, %s" % (piece.get_desc(), piece_number))
 
         select_url = 'https://boardgamearena.com/%s/%s/%s/selectPiece.html' % (self.gameserver, self.game_name, self.game_name)
         select_params = {
@@ -101,16 +97,24 @@ class BGAQuarto(BGATable):
 
         r = self.bga.session.get(select_url, params = select_params)
         assert(r.status_code == 200)
+        print(r.url)
+        dict = json.loads(r.text)
+        print(dict)
+        assert(dict['status'])
 
     def me_place_piece(self):
-        assert(self.unused_squares)
-
         me = self.quarto.get_current_place_player()
         piece = self.piece_number_to_piece[self.selected_piece_number]
 
+        print(self.quarto.get_board().get_formatted_output())
+        print("Robot choosing place for piece %s, %s" % (piece.get_desc(), self.selected_piece_number))
+        assert(self.quarto.get_board().is_unused(piece))
+
         si = me.robot_choose_square(piece)
         ri = Board.get_ri(si)
-        ci = Board.get_ri(si)
+        ci = Board.get_ci(si)
+
+        print("Robot chose square %s: %s, %s" % (si, ci + 1, ri + 1))
 
         select_url = 'https://boardgamearena.com/%s/%s/%s/placePiece.html' % (self.gameserver, self.game_name, self.game_name)
         select_params = {
@@ -121,17 +125,21 @@ class BGAQuarto(BGATable):
 
         r = self.bga.session.get(select_url, params = select_params)
         assert(r.status_code == 200)
+        print(r.url)
+        dict = json.loads(r.text)
+        print(dict)
+        assert(dict['status'])
 
     def someone_selected_piece(self, piece_number):
         self.selected_piece_number = piece_number
-        assert(piece_number in self.unused_pieces)
-        self.unused_pieces.remove(piece_number)
+
+        piece = self.piece_number_to_piece[self.selected_piece_number]
+        assert(self.quarto.get_board().is_unused(piece))
 
     def someone_placed_piece(self, piece_number, x, y):
         assert(piece_number == self.selected_piece_number)
-        assert((x, y) in self.unused_squares)
-        self.unused_squares.remove((x, y))
 
         si = Board.get_si(y - 1, x - 1)
+        assert(self.quarto.get_board().is_empty(si))
         piece = self.piece_number_to_piece[piece_number]
         self.quarto.place_piece(si, piece)
