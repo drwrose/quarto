@@ -82,8 +82,6 @@ class BGAQuarto(BGATable):
     def me_select_piece(self):
         me = self.quarto.get_current_give_player()
 
-        print(self.quarto.get_board().get_formatted_output())
-
         piece = me.robot_choose_piece()
         piece_number = self.piece_to_piece_number[piece]
 
@@ -95,18 +93,21 @@ class BGAQuarto(BGATable):
             'table' : self.table_id,
             }
 
-        r = self.bga.session.get(select_url, params = select_params)
+        try:
+            r = self.bga.session.get(select_url, params = select_params)
+        except ConnectionError:
+            print("Connection error on %s" % (select_url))
+            import pdb; pdb.set_trace()
+
         assert(r.status_code == 200)
-        print(r.url)
+        #print(r.url)
         dict = json.loads(r.text)
-        print(dict)
         assert(dict['status'])
 
     def me_place_piece(self):
         me = self.quarto.get_current_place_player()
         piece = self.piece_number_to_piece[self.selected_piece_number]
 
-        print(self.quarto.get_board().get_formatted_output())
         print("Robot choosing place for piece %s, %s" % (piece.get_desc(), self.selected_piece_number))
         assert(self.quarto.get_board().is_unused(piece))
 
@@ -123,11 +124,15 @@ class BGAQuarto(BGATable):
             'table' : self.table_id,
             }
 
-        r = self.bga.session.get(select_url, params = select_params)
+        try:
+            r = self.bga.session.get(select_url, params = select_params)
+        except ConnectionError:
+            print("Connection error on %s" % (select_url))
+            import pdb; pdb.set_trace()
+
         assert(r.status_code == 200)
-        print(r.url)
+        #print(r.url)
         dict = json.loads(r.text)
-        print(dict)
         assert(dict['status'])
 
     def someone_selected_piece(self, piece_number):
@@ -143,3 +148,5 @@ class BGAQuarto(BGATable):
         assert(self.quarto.get_board().is_empty(si))
         piece = self.piece_number_to_piece[piece_number]
         self.quarto.place_piece(si, piece)
+
+        print(self.quarto.get_board().get_formatted_output())

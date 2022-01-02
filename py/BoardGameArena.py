@@ -192,6 +192,8 @@ class BoardGameArena:
             elif notification_type == 'proposeRematch':
                 table_id = args['table_id']
                 print("proposeRematch for %s" % (table_id))
+            elif notification_type == 'updatePlayerNotifCount':
+                print("updatePlayerNotifCount")
             else:
                 print("Unhandled player notification type %s: %s" % (notification_type, data_dict))
         else:
