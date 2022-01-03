@@ -5,6 +5,7 @@ modifies the paths to find the _pyquarto.pyd as appropriate.  Use
 
 import sys
 import os
+import platform
 
 # SWIG leaves pyquarto.py in the c/build directory.  MSVC leaves
 # _pyquarto.pyd in c/build/RelWithDebInfo directory.  We need to
@@ -19,13 +20,15 @@ thisdir = os.path.abspath(os.path.dirname(__file__))
 # Then we get the build dir and subbuild dir.
 build_dir = os.path.normpath(os.path.join(thisdir, '..', 'c', 'build'))
 assert(os.path.isdir(build_dir))
-
-subbuild_dir = os.path.normpath(os.path.join(build_dir, 'RelWithDebInfo'))
-assert(os.path.isdir(subbuild_dir))
-
-sys.path.append(subbuild_dir)
 sys.path.append(build_dir)
 
+# We only need to deal with the MSVC subdirectory if we're running on
+# Windows.
+if platform.system() == 'Windows':
+    subbuild_dir = os.path.normpath(os.path.join(build_dir, 'RelWithDebInfo'))
+    assert(os.path.isdir(subbuild_dir))
+    sys.path.append(subbuild_dir)
+    
 # Now that the paths are set up correctly, we can safely import
 # pyquarto, which itself internally imports _pyquarto.pyd.
 from pyquarto import *

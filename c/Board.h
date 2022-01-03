@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <iostream>
 #include <vector>
+#include <memory>
 
 class Board {
 public:
