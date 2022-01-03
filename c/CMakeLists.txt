@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.16)
 project(quarto LANGUAGES CXX C)
 
 # SWIG: use standard target name.
@@ -25,19 +25,19 @@ set(QUARTO_SWIG pyquarto.i)
 if (BUILD_PYQUARTO)
   # Build pyquarto
 
-  find_package(Python COMPONENTS Development REQUIRED)
-  include_directories(${Python_INCLUDE_DIRS})
+  find_package(Python3 COMPONENTS Development REQUIRED)
+  include_directories(${Python3_INCLUDE_DIRS})
   find_package(SWIG REQUIRED)
   include(${SWIG_USE_FILE})
 
   include_directories("${CMAKE_SOURCE_DIR}")
-  link_directories(${Python_LIBRARY_DIRS})
+  link_directories(${Python3_LIBRARY_DIRS})
 
   SET(CMAKE_SWIG_FLAGS "-threads")
 
   set_property(SOURCE ${QUARTO_SWIG} PROPERTY CPLUSPLUS ON)
   swig_add_library(pyquarto TYPE SHARED LANGUAGE PYTHON SOURCES ${QUARTO_SWIG} ${QUARTO_SOURCES})
-  #target_link_libraries(pyquarto ${PYTHON_LIBRARIES} ${WS2_LIBRARY} ${CMAKE_THREAD_LIBS_INIT})
+  #target_link_libraries(pyquarto ${PYTHON3_LIBRARIES} ${WS2_LIBRARY} ${CMAKE_THREAD_LIBS_INIT})
 
 endif (BUILD_PYQUARTO)
 
