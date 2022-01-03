@@ -198,7 +198,7 @@ class BGANotificationSession:
         dispatch it appropriately. """
 
         try:
-            #print("Got message on %s:%s" % (self.sid, self.subscribe_url))
+            print("Got message on %s:%s" % (self.sid, self.subscribe_url))
 
             # Get the integer message_id from the beginning of the message.
             pattern = re.compile('([0-9]+)')

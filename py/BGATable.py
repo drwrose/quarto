@@ -97,6 +97,13 @@ class BGATable:
 
         self.gs_socketio_path = ast.literal_eval(m.group(1))
 
+        # Also look for gameui.decision, which might have a request to
+        # abandon the game.
+        m = re.search('[ \t]+gameui[.]decision=(.*);', r.text)
+        if m is not None:
+            decision = json.loads(m.group(1))
+            self.consider_table_decision(decision)
+
     def fetch_notification_history(self):
         # TODO: Is the game_name really repeated, or does the second
         # name come from another source?
@@ -233,6 +240,17 @@ class BGATable:
         else:
             print("Unhandled table notification on %s: %s" % (channel, data))
 
+    def consider_table_decision(self, decision):
+        decision_type = decision.get('decision_type', None)
+        decision_taken = decision.get('decision_taken', None)
+        print("consider_table_decision: %s, decision taken: %s" % (decision_type, decision_taken))
+        print(decision)
+
+        # TODO.
+
+        # Confirm abandon:
+        #https://boardgamearena.com/table/table/decide.html?decision=1&table=228866298&dojo.preventCache=1641154030529
+
     def table_notification(self, notification_type, data_dict, live):
         if notification_type == 'tableInfosChanged':
             print("tableInfosChanged")
@@ -241,9 +259,7 @@ class BGATable:
         elif notification_type == 'allPlayersAccepted':
             print("allPlayersAccepted")
         elif notification_type == 'tableDecision':
-            decision_type = data_dict.get('decision_type', None)
-            print("tableDecision: %s" % (decision_type))
-            print(data_dict)
+            self.consider_table_decision(data_dict)
         elif notification_type in ['simpleNote', 'simpleNode']:
             note = data_dict.get('log')
             print("simpleNote: %s" % (note))
