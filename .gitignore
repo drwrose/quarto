@@ -1,4 +1,5 @@
 c/build
 py/bga_credentials.txt
+py/quarto.log
 *~
 *.pyc
