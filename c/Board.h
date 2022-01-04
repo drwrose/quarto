@@ -22,6 +22,8 @@ public:
   Board(const Board &copy, unsigned int si, Piece piece);
   ~Board();
 
+  void set_advanced(bool advanced);
+
   static unsigned int get_si(unsigned int ri, unsigned int ci) {
     assert(ri < num_rows && ci < num_cols);
     return ri * num_rows + ci;
@@ -88,15 +90,11 @@ private:
   void search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int max_search_levels, Piece give_piece, bool show_log = false) const;
 
 private:
-  // TODO: pack this for efficiency?
-  //static constexpr unsigned int pieces_per_byte = 8 / Piece::num_bits;
-  //static constexpr unsigned int board_num_bytes = num_squares / pieces_per_byte;
-  //uint8_t _board[board_num_bytes];
-
   Piece::Code _board[num_squares];
   BoardMask _occupied;
   int _num_used_pieces;
   Piece::PieceMask _used_pieces;
+  bool _advanced;
   BoardMask _win;
   int _near_win_count;
 };

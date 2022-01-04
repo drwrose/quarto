@@ -42,6 +42,17 @@ class BGAQuarto(BGATable):
 
         super(BGAQuarto, self).__init__(bga, table_id)
 
+    def update_table_infos(self):
+        """ Called whenever self.table_infos has been updated. """
+
+        # Check whether we have the Standard or Advanced Quarto variant.
+        variant = self.table_infos['options']['100']['value']
+        advanced = (int(variant) == 2)
+        print("Advanced = %s" % (advanced))
+        self.quarto.set_advanced(advanced)
+
+        super(BGAQuarto, self).update_table_infos()
+
     def table_notification(self, notification_type, data_dict, live):
         if notification_type == 'placePiece':
             args = data_dict['args']
@@ -85,7 +96,7 @@ class BGAQuarto(BGATable):
         piece = me.robot_choose_piece()
         piece_number = self.piece_to_piece_number[piece]
 
-        print("Robot chose piece %s, %s" % (piece.get_desc(), piece_number))
+        print("Robot %s chose piece %s, %s" % (me.get_name(), piece.get_desc(), piece_number))
 
         select_url = 'https://boardgamearena.com/%s/%s/%s/selectPiece.html' % (self.gameserver, self.game_name, self.game_name)
         select_params = {
@@ -96,8 +107,8 @@ class BGAQuarto(BGATable):
         try:
             r = self.bga.session.get(select_url, params = select_params)
         except ConnectionError:
-            print("Connection error on %s" % (select_url))
-            import pdb; pdb.set_trace()
+            message = "Connection error on %s" % (select_url)
+            raise RuntimeError(message)
 
         assert(r.status_code == 200)
         #print(r.url)
@@ -108,14 +119,20 @@ class BGAQuarto(BGATable):
         me = self.quarto.get_current_place_player()
         piece = self.piece_number_to_piece[self.selected_piece_number]
 
-        print("Robot choosing place for piece %s, %s" % (piece.get_desc(), self.selected_piece_number))
+        if not self.quarto.get_board().is_unused(piece):
+            # This can happen when the game is shutting down.
+            print("Robot %s was handed an invalid piece %s" % (me.get_name(), piece.get_desc()))
+            self.game_is_invalid()
+            return
+
+        print("Robot %s choosing place for piece %s, %s" % (me.get_name(), piece.get_desc(), self.selected_piece_number))
         assert(self.quarto.get_board().is_unused(piece))
 
         si = me.robot_choose_square(piece)
         ri = Board.get_ri(si)
         ci = Board.get_ci(si)
 
-        print("Robot chose square %s: %s, %s" % (si, ci + 1, ri + 1))
+        print("Robot %s chose square %s: %s, %s" % (me.get_name(), si, ci + 1, ri + 1))
 
         select_url = 'https://boardgamearena.com/%s/%s/%s/placePiece.html' % (self.gameserver, self.game_name, self.game_name)
         select_params = {
@@ -127,8 +144,8 @@ class BGAQuarto(BGATable):
         try:
             r = self.bga.session.get(select_url, params = select_params)
         except ConnectionError:
-            print("Connection error on %s" % (select_url))
-            import pdb; pdb.set_trace()
+            message = "Connection error on %s" % (select_url)
+            raise RuntimeError(message)
 
         assert(r.status_code == 200)
         #print(r.url)
@@ -139,14 +156,31 @@ class BGAQuarto(BGATable):
         self.selected_piece_number = piece_number
 
         piece = self.piece_number_to_piece[self.selected_piece_number]
-        assert(self.quarto.get_board().is_unused(piece))
+        if not self.quarto.get_board().is_unused(piece):
+            # This can happen when the game is shutting down.
+            print("Someone selected an invalid piece %s" % (piece.get_desc()))
+            self.game_is_invalid()
+            return
 
     def someone_placed_piece(self, piece_number, x, y):
-        assert(piece_number == self.selected_piece_number)
+        piece = self.piece_number_to_piece[piece_number]
+
+        if not self.quarto.get_board().is_unused(piece):
+            # This can happen when the game is shutting down.
+            print("Someone placed an invalid piece %s" % (piece.get_desc()))
+            self.game_is_invalid()
+            return
+
+        if piece_number != self.selected_piece_number:
+            # This is weird, but not technically an error.
+            print("Someone placed an unexpected piece %s" % (piece.get_desc()))
 
         si = Board.get_si(y - 1, x - 1)
-        assert(self.quarto.get_board().is_empty(si))
-        piece = self.piece_number_to_piece[piece_number]
-        self.quarto.place_piece(si, piece)
+        if not self.quarto.get_board().is_empty(si):
+            # This can happen when the game is shutting down.
+            print("Someone placed a piece on an invalid square %s, %s" % (x, y))
+            self.game_is_invalid()
+            return
 
+        self.quarto.place_piece(si, piece)
         print(self.quarto.get_board().get_formatted_output())

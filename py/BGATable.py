@@ -90,7 +90,7 @@ class BGATable:
         r = self.bga.session.get(tableinfo_url, params = tableinfo_params)
         dict = json.loads(r.text)
         table_infos = dict['data']
-        self.__update_table_infos(table_infos)
+        self.__apply_table_infos(table_infos)
 
     def read_gameui_data(self):
         """ Updates the relevant data passed to the Javascript object
@@ -130,8 +130,8 @@ class BGATable:
         # abandon the game or whatever.
         m = re.search('[ \t]+gameui[.]decision=(.*);', r.text)
         if m is not None:
-            decision = json.loads(m.group(1))
-            self.consider_table_decision(decision)
+            args = json.loads(m.group(1))
+            self.consider_table_decision(args)
 
     def fetch_notification_history(self):
         # TODO: Is the game_name really repeated, or does the second
@@ -153,7 +153,7 @@ class BGATable:
             channel = bgamsg_data['channel']
             self.__gs_notification(channel, bgamsg_data, False)
 
-    def __update_table_infos(self, table_infos):
+    def __apply_table_infos(self, table_infos):
         """ A new table_infos dictionary has been acquired.  Store it,
         and deal with whatever it says. """
 
@@ -168,17 +168,20 @@ class BGATable:
         assert(self.gameserver)
         print("self.gameserver = %s" % (self.gameserver))
 
-        if not self.gs_socketio_url and self.gameserver != '0':
+        if not self.gs_notification and self.gameserver != '0':
             # If we have a real gameserver now, then sign up for
             # in-game notifications.
             self.setup_gs_notifications()
 
+        self.update_table_infos()
+
+    def update_table_infos(self):
+        """ Called whenever self.table_infos has been updated. """
         status = self.table_infos['status']
         print("updated table_info for %s, status = %s" % (self.table_id, status))
         if status == 'open':
             me_info = self.table_infos['players'].get(str(self.bga.user_id), None)
             table_status = me_info and me_info['table_status']
-            print("table_status = %s" % (table_status))
             if table_status == 'setup':
                 # We're not in the game yet, join it.
                 self.accept_invite()
@@ -279,40 +282,56 @@ class BGATable:
         else:
             print("Unhandled gen notification on %s: %s" % (channel, data))
 
-    def consider_table_decision(self, decision):
+    def consider_table_decision(self, args):
         """ Some "table decision" has been offered by the other
         player(s) in the game, e.g. to abandon the game or whatever.
         Consider this. """
 
-        decision_type = decision.get('decision_type', None)
-        decision_taken = decision.get('decision_taken', None)
-        print("consider_table_decision: %s, decision taken: %s" % (decision_type, decision_taken))
-        print(decision)
+        decision_type = args.get('decision_type', None)
+        if decision_type is None or decision_type == 'none':
+            # There isn't actually a decision pending.
+            return
 
+        decision_taken = args.get('decision_taken', None)
+        print("consider_table_decision: %s, decision taken: %s" % (decision_type, decision_taken))
+        print(args)
+
+
+        if decision_taken:
+            # We've previously cast our decision on this question.
+            return
+
+        decision = None
         if decision_type == 'abandon':
             # Someone wants to abandon the game, we'll charitably go
             # along with that.
-            if not decision_taken:
-                decide_url = 'https://boardgamearena.com/table/table/decide.html'
-                decide_params = {
-                    'decision' : 1,
-                    'table' : self.table_id,
-                    }
+            decision = 1
+        elif decision_type == 'switch_tb':
+            # Someone wants to switch to turn-based mode, what is
+            # that?  Email?  We don't support that.
+            decision = 0
+        else:
+            print("Unhandled table decision_type %s" %(decision_type))
 
-                r = self.bga.session.get(decide_url, params = decide_params)
-                assert(r.status_code == 200)
-                #print(r.url)
-                dict = json.loads(r.text)
-                assert(dict['status'])
+        if decision is not None:
+            # All right, register our decision.
+            decide_url = 'https://boardgamearena.com/table/table/decide.html'
+            decide_params = {
+                'decision' : decision,
+                'table' : self.table_id,
+                }
 
-        # Confirm abandon:
-        #https://boardgamearena.com/table/table/decide.html?decision=1&table=228866298&dojo.preventCache=1641154030529
+            r = self.bga.session.get(decide_url, params = decide_params)
+            assert(r.status_code == 200)
+            #print(r.url)
+            dict = json.loads(r.text)
+            assert(dict['status'])
 
     def table_notification(self, notification_type, data_dict, live):
         args = data_dict.get('args', {})
         if notification_type == 'tableInfosChanged':
             print("tableInfosChanged")
-            self.__update_table_infos(args)
+            self.__apply_table_infos(args)
         elif notification_type == 'allPlayersAccepted':
             print("allPlayersAccepted")
         elif notification_type == 'tableDecision':
@@ -331,6 +350,8 @@ class BGATable:
             print("updateReflexionTime")
         elif notification_type == 'finalScore':
             print("finalScore")
+        elif notification_type == 'gameResultNeutralized':
+            print("gameResultNeutralized")
         else:
             print("Unhandled table notification type %s: %s" % (notification_type, data_dict))
 
@@ -338,6 +359,26 @@ class BGATable:
         self.game_state = game_state
         if live:
             self.consider_turn()
+
+    def game_is_invalid(self):
+        """ When a derived class determines the game has dropped into
+        an invalid state, it should call this method.  This will
+        propose a group abandon, which should shut down the game if we
+        were the only player left. """
+
+        decide_url = 'https://boardgamearena.com/table/table/decide.html'
+        decide_params = {
+            'src' : 'menu',
+            'type' : 'abandon',
+            'decision' : 1,
+            'table' : self.table_id,
+            }
+
+        r = self.bga.session.get(decide_url, params = decide_params)
+        assert(r.status_code == 200)
+        print(r.url)
+        dict = json.loads(r.text)
+        print(dict)
 
     def consider_turn(self):
         """ Called whenever the game changes state, this should look

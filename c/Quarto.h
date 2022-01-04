@@ -16,6 +16,8 @@ public:
 
   void new_game();
 
+  void set_advanced(bool advanced) { _board->set_advanced(advanced); }
+
   const Board &get_board() const { return *_board; }
 
   Player &get_player(int pi);

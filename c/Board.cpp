@@ -14,6 +14,7 @@ Board() {
   _occupied = 0;
   _num_used_pieces = 0;
   _used_pieces = 0;
+  _advanced = false;
   _win = 0;
   _near_win_count = 0;
 }
@@ -25,7 +26,8 @@ Board::
 Board(const Board &copy, unsigned int si, Piece piece) :
   _occupied(copy._occupied),
   _num_used_pieces(copy._num_used_pieces),
-  _used_pieces(copy._used_pieces)
+  _used_pieces(copy._used_pieces),
+  _advanced(copy._advanced)
 {
   std::copy(std::begin(copy._board), std::end(copy._board), std::begin(_board));
   assert(si < num_squares);
@@ -40,6 +42,14 @@ Board(const Board &copy, unsigned int si, Piece piece) :
 
 Board::
 ~Board() {
+}
+
+// Sets the advanced flag, indicating the advanced-variant rules are
+// in play.  When this is true, a 2x2 box of matching pieces is also
+// counted a win, in addition to the normal 4-in-a-row win.
+void Board::
+set_advanced(bool advanced) {
+  _advanced = advanced;
 }
 
 // Returns true if the indicated square is empty, false if it contains
@@ -254,6 +264,9 @@ calc_win() {
   _near_win_count = 0;
 
   if (num_rows == 4 && num_cols == 4) {
+    // This is the normal case, a 4x4 grid.
+
+    // Check for a winning 4-in-a-row.
     calc_row_win(0, 1, 2, 3);
     calc_row_win(4, 5, 6, 7);
     calc_row_win(8, 9, 10, 11);
@@ -265,7 +278,23 @@ calc_win() {
     calc_row_win(0, 5, 10, 15);
     calc_row_win(3, 6, 9, 12);
 
+    if (_advanced) {
+      // If the advanced rules are in effect, check also for winning
+      // 2x2 squares.
+      calc_row_win(0, 1, 4, 5);
+      calc_row_win(1, 2, 5, 6);
+      calc_row_win(2, 3, 6, 7);
+      calc_row_win(4, 5, 8, 9);
+      calc_row_win(5, 6, 9, 10);
+      calc_row_win(6, 7, 10, 11);
+      calc_row_win(8, 9, 12, 13);
+      calc_row_win(9, 10, 13, 14);
+      calc_row_win(10, 11, 14, 15);
+    }
+
   } else if (num_rows == 3 && num_cols == 3) {
+    // This is a degenerate case, a 3x3 board.  Only for testing, not
+    // the real 4x4 game.
     calc_row_win(0, 1, 2);
     calc_row_win(3, 4, 5);
     calc_row_win(6, 7, 8);
@@ -276,6 +305,8 @@ calc_win() {
     calc_row_win(2, 4, 6);
 
   } else if (num_rows == 2 && num_cols == 2) {
+    // This is a degenerate case, a 2x2 board.  Only for testing, not
+    // the real 4x4 game.
     calc_row_win(0, 1);
     calc_row_win(2, 3);
     calc_row_win(0, 2);
