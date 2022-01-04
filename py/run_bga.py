@@ -59,7 +59,7 @@ if logfile_name:
     # We use os.dup2() here to map the underlying, C-level stdout and
     # stderr to the logfile, so our C++-based Quarto library will also
     # send its output to the log.
-    logfile = open(logfile_name, 'w', buffering = 1, encoding = 'utf-8')
+    logfile = open(logfile_name, 'a', buffering = 1, encoding = 'utf-8')
     print("logfile.fileno = %s" % (logfile.fileno()))
     os.dup2(logfile.fileno(), 1)
     os.dup2(logfile.fileno(), 2)
