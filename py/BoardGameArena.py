@@ -245,11 +245,26 @@ class BoardGameArena:
             table = BGAQuarto(self, table_id)
 
         if not table:
-            print("Unable to create table of type %s" % (game_name))
+            print("Don't know how to play %s" % (game_name))
+            self.refuse_invitation(table_id)
             return None
 
         self.tables[table_id] = table
         return table
+
+    def refuse_invitation(self, table_id):
+        """ Tells the player no thank you, when we're invited to a
+        game we can't play. """
+
+        refuse_url = 'https://boardgamearena.com/table/table/refuseInvitation.html'
+        refuse_params = {
+            'table' : table_id,
+            }
+
+        r = self.session.get(refuse_url, params = refuse_params)
+        print(r.url)
+        assert(r.status_code == 200)
+        print(r.text)
 
     def close_table(self, table):
         table_object = self.tables.get(table.table_id, None)
