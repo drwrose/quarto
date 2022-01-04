@@ -16,6 +16,9 @@ class BoardGameArena:
     """ This class maintains a session to BoardGameArena, via the
     Requests Python library. """
 
+    # Don't try to play more than this number of games at once.
+    max_simultaneous_games = 2
+
     def __init__(self):
 
         # The list of all BGANotificationSession objects, and the cvar
@@ -237,6 +240,12 @@ class BoardGameArena:
 
         if game_name is None:
             # Ignore this, we don't need to create a game we don't know.
+            return None
+
+        if len(self.tables) > self.max_simultaneous_games:
+            # Too busy, maybe later.
+            print("Already involved in %s games" % (len(self.tables)))
+            self.refuse_invitation(table_id)
             return None
 
         # Create a new table entry.
