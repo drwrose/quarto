@@ -37,18 +37,23 @@ class BoardGameArena:
 
         # Now we can subscribe to the basic channels.
         notification.subscribe_channels(
-            ## "/general/emergency",  # Probably we don't need this.
-            ## "/chat/general",  # or this
+            # This channel contains game requests and generally
+            # handles the game-startup sequence.
             "/player/p%s" % (self.user_id),
+
+            # These other channels are subscribed to by the actual BGA
+            # client, but I don't think any of them are relevant to
+            # us.  They're presumably messages like "The server is
+            # going down now!" or "Table xxxx is looking for
+            # players!".
+            ## "/general/emergency",
+            ## "/chat/general",
             ## "/tablemanager/global",
             ## "/tablemanager/detailled",
             ## "/tablemanager/globalasync",
             )
 
         self.fetch_table_history()
-
-        # https://boardgamearena.com/1/quarto/quarto/wakeup.html?myturnack=true&table=226845327&dojo.preventCache=1640546551483
-        # -> JSON status indication, basic heartbeat?
 
     def cleanup(self):
         """ Stops any threads and closes any sockets, in preparation
@@ -148,20 +153,23 @@ class BoardGameArena:
             notification.cleanup()
         self.notifications = []
 
-    def dispatch(self):
-        """ Dispatches all pending notifications. """
-
-        for notification in self.notifications:
-            notification.dispatch()
 
     def serve(self):
         """ Does not return, just waits for stuff to happen. """
         print("Serving.")
         try:
             while True:
+                # Check for recent messages.
                 with self.notification_cvar:
                     self.notification_cvar.wait(1)
-                    self.dispatch()
+                    for notification in self.notifications:
+                        notification.dispatch()
+
+                # Poll the active tables from time to time, in case a
+                # message got dropped.
+                for table_id, table in self.tables.items():
+                    table.poll()
+
         finally:
             self.cleanup()
 
@@ -177,23 +185,32 @@ class BoardGameArena:
             args = data_dict.get('args', {})
             if notification_type == 'updatePlayerTableStatus':
                 self.update_player_table_status(args)
+
             elif notification_type == 'playerstatus':
                 print("player_status %s is %s" % (args['player_name'], args['player_status']))
+
             elif notification_type == 'groupUpdate':
                 group_id = args['group']
                 print("groupUpdate for %s" % (group_id))
+
             elif notification_type == 'matchmakingGameStart':
                 table_id = args['table_id']
                 print("matchmakingGameStart for %s" % (table_id))
+
             elif notification_type == 'shouldAcceptGameStart':
                 table_id = args['table_id']
                 print("shouldAcceptGameStart for %s" % (table_id))
-                self.update_table(table_id)
+                table = self.update_table(table_id)
+                if table:
+                    table.accept_start()
+
             elif notification_type == 'proposeRematch':
                 table_id = args['table_id']
                 print("proposeRematch for %s" % (table_id))
+
             elif notification_type == 'updatePlayerNotifCount':
                 print("updatePlayerNotifCount")
+
             else:
                 print("Unhandled player notification type %s: %s" % (notification_type, data_dict))
         else:
@@ -208,14 +225,19 @@ class BoardGameArena:
         self.update_table(table_id, game_name = game_name)
 
     def update_table(self, table_id, game_name = None):
+        """ Adds the table to self.tables if it wasn't already there;
+        in any case, fetches the latest table_infos for the table.
+        Returns the table, or None if the table isn't valid. """
+
         if table_id in self.tables:
             # Already there, but maybe there's an update in status.
-            self.tables[table_id].fetch_table_infos()
-            return
+            table = self.tables[table_id]
+            table.fetch_table_infos()
+            return table
 
         if game_name is None:
             # Ignore this, we don't need to create a game we don't know.
-            return
+            return None
 
         # Create a new table entry.
         table = None
@@ -224,9 +246,10 @@ class BoardGameArena:
 
         if not table:
             print("Unable to create table of type %s" % (game_name))
-            return
+            return None
 
         self.tables[table_id] = table
+        return table
 
     def close_table(self, table):
         table_object = self.tables.get(table.table_id, None)

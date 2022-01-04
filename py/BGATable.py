@@ -1,13 +1,6 @@
 import re
 import json
 import ast
-import requests          # python -m pip install requests
-import websocket         # python -m pip install websocket-client
-import threading
-import time
-import ssl
-import traceback
-import queue
 
 from http.client import HTTPConnection
 #HTTPConnection.debuglevel = 1
@@ -21,8 +14,13 @@ class BGATable:
         self.bga = bga
         self.table_id = table_id
         self.table_infos = None
+        self.gameserver = None
+        self.game_name = None
         self.last_packet_id = 0
         self.game_state = {}
+
+        self.accepted_invite = False
+        self.accepted_start = False
 
         self.notification = None
         self.gs_socketio_url = None
@@ -30,12 +28,13 @@ class BGATable:
 
         self.fetch_table_infos()
 
-    def setup_notifications(self):
+    def setup_game_notifications(self):
         """ We can call this as soon as we establish an actual
         gameserver, not '0'. """
 
         print("Got gameserver %s, setting up notifications" % (self.gameserver))
-        self.fetch_gs_socketio()
+        self.read_gameui_data()
+
         self.notification = self.bga.create_notification_session(
             message_callback = self.__channel_notification,
             socketio_url = self.gs_socketio_url,
@@ -68,10 +67,17 @@ class BGATable:
         table_infos = dict['data']
         self.__update_table_infos(table_infos)
 
-    def fetch_gs_socketio(self):
-        """ Updates the gs_socketio_* values, which describe how to
-        communicate with the game server directly. """
+    def read_gameui_data(self):
+        """ Updates the relevant data passed to the Javascript object
+        gameui, by extracting it from the Javascript code loaded with
+        this particular table's page.  This data is only available
+        once we have been told a specific gameserver number, other
+        than '0' which means it hasn't been assigned yet. """
 
+        assert(self.gameserver and self.gameserver != '0')
+
+        # Go to the web page hosted for this table on the assigned
+        # gameserver.
         table_url = 'https://boardgamearena.com/%s/%s' % (self.gameserver, self.game_name)
         table_params = {
             'table' : self.table_id,
@@ -84,7 +90,6 @@ class BGATable:
         m = re.search('[ \t]+gameui[.]gs_socketio_url=(.*);', r.text)
         if m is None:
             message = "gs_socketio_url not found"
-            print(message); import pdb; pdb.set_trace()
             raise RuntimeError(message)
 
         self.gs_socketio_url = ast.literal_eval(m.group(1))
@@ -92,13 +97,12 @@ class BGATable:
         m = re.search('[ \t]+gameui[.]gs_socketio_path=(.*);', r.text)
         if m is None:
             message = "gs_socketio_path not found"
-            print(message); import pdb; pdb.set_trace()
             raise RuntimeError(message)
 
         self.gs_socketio_path = ast.literal_eval(m.group(1))
 
         # Also look for gameui.decision, which might have a request to
-        # abandon the game.
+        # abandon the game or whatever.
         m = re.search('[ \t]+gameui[.]decision=(.*);', r.text)
         if m is not None:
             decision = json.loads(m.group(1))
@@ -132,11 +136,17 @@ class BGATable:
         self.gameserver = self.table_infos['gameserver']
         self.game_name = self.table_infos['game_name']
 
+        # Initially, BGA assigns us a gameserver of '0', which means
+        # no particular server has been assigned yet.  When it
+        # eventually does assign the table to a gameserver, it will
+        # replace this '0' with a non-zero digit.
+        assert(self.gameserver)
         print("self.gameserver = %s" % (self.gameserver))
 
         if not self.gs_socketio_url and self.gameserver != '0':
-            # If we have a real gameserver now, then sign up for notifications.
-            self.setup_notifications()
+            # If we have a real gameserver now, then sign up for
+            # in-game notifications.
+            self.setup_game_notifications()
 
         status = self.table_infos['status']
         print("updated table_info for %s, status = %s" % (self.table_id, status))
@@ -151,33 +161,27 @@ class BGATable:
                 print("expected")
                 self.accept_invite()
             elif table_status == 'play':
-                print("playing")
+                print("table_status is play")
+                # We're probably waiting for the "start" button to be
+                # pressed.
             else:
                 print("Unhandled table status %s" % (table_status))
         elif status == 'setup':
-            self.accept_start()
+            print("setup")
+            # In this case we must have accepted the invite previously.
+            self.accepted_invite = True
         elif status == 'finished':
             print("Game is finished.")
             self.bga.close_table(self)
         elif status == 'play':
             print("Game is actively playing.")
+            # In this case we must have accepted the start previously.
+            self.accepted_invite = True
+            self.accepted_start = True
         else:
             print("Unhandled game status %s" % (status))
 
     def accept_invite(self):
-        print("accept_invite")
-
-        accept_url = 'https://boardgamearena.com/table'
-        accept_params = {
-            'table' : self.table_id,
-            'acceptinvit' : '',
-            'refreshtemplate' : 1,
-            }
-
-        ## r = self.bga.session.get(accept_url, params = accept_params)
-        ## assert(r.status_code == 200)
-        #print(r.text)
-
         join_url = 'https://boardgamearena.com/table/table/joingame.html'
         join_params = {
             'table' : self.table_id,
@@ -186,8 +190,7 @@ class BGATable:
         r = self.bga.session.get(join_url, params = join_params)
         assert(r.status_code == 200)
         print(r.text)
-
-        print("done accept_invite")
+        self.accepted_invite = True
 
     def accept_start(self):
         accept_url = 'https://boardgamearena.com/table/table/acceptGameStart.html'
@@ -198,11 +201,16 @@ class BGATable:
         r = self.bga.session.get(accept_url, params = accept_params)
         assert(r.status_code == 200)
         print(r.text)
+        self.accepted_invite = True
+        self.accepted_start = True
 
     def send_myturnack(self):
         """ Sends an explicit message to acknowledge that we have seen
         that it's our turn. """
 
+        # I don't think this is actually needed?  The actual BGA
+        # client sends this from time to time, but we never call this
+        # and it doesn't seem to mind.  OK.
         wakeup_url = 'https://boardgamearena.com/%s/%s/%s/wakeup.html' % (self.gameserver, self.game_name, self.game_name)
         wakeup_params = {
             'myturnack' : 'true',
@@ -286,9 +294,18 @@ class BGATable:
         """ Called whenever the game changes state, this should look
         around and see if a turn needs to be played. """
 
-        print("consider_turn")
         if int(self.game_state.get('active_player', 0)) == int(self.bga.user_id):
             self.my_turn()
 
     def my_turn(self):
-        print("my_turn")
+        pass
+
+    def poll(self):
+        """ Called by the parent class from time to time (e.g. once
+        per second) to check if anything needs to be done lately. """
+
+        if self.accepted_start and self.gameserver == '0':
+            # We've accepted the start but we haven't been told a
+            # gameserver yet.  Keep checking for the gameserver, it
+            # should be coming in soon.
+            self.fetch_table_infos()

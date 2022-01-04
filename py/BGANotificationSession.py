@@ -9,11 +9,27 @@ import traceback
 import queue
 
 class BGANotificationSession:
-    """ Creates a connection to the BGA server to listen for
-    notifications on any number of subscribed channels.  Notifications
-    are delivered in the main thread to the message_callback function
-    passed to the constructor, when the dispatch() method is
-    called. """
+    """ Creates a connection to one of the BGA servers to listen for
+    notifications on any number of subscribed channels.  This is BGA's
+    mechanism for asynchronous notifications, things like chat
+    messages, game invites, and turn notifications.
+
+    You can create multiple BGANotificationSession objects.  Each one
+    can connect to a single BGA server, and can subscribe to any
+    number of channels on that server, by channel_name.  When a
+    notification comes in on any of the named channels, the specified
+    message_callback function is called in the main thread (or
+    whichever thread calls dispatch()).  The callback function is made
+    with the parameters message_callback(channel_name, message_data,
+    live), where message_data is whatever data is associated with the
+    notification, and live is True if the message originated "live"
+    from the server; this class always passes True for live.
+    Presumably another class may call the same callback method with
+    False for live, so the callback may differentiate.  Specifically,
+    BGATable does this when loading up past notifications at startup.
+
+    Call cleanup() to unsubscribe to all channels in this object, shut
+    down the threads, and close the socket.  """
 
     eio = '3'  # Don't know what this is really, but BGA passes it on every URL.
 
@@ -54,7 +70,6 @@ class BGANotificationSession:
             'credentials' : self.bga.socketio_credentials,
             'EIO' : self.eio,
             'transport' : 'polling',
-            #'t' : 'Ntu9pqW',
             }
 
         r = self.bga.session.get(self.subscribe_url, params = subscribe_params)
@@ -170,8 +185,8 @@ class BGANotificationSession:
                 try:
                     json_data = json.loads(json_text)
                 except json.decoder.JSONDecodeError:
-                    print("Invalid JSON text: %s" % (json_text))
-                    import pdb; pdb.set_trace()
+                    message = "Invalid JSON text: %s" % (json_text)
+                    raise RuntimeError(message)
             else:
                 json_data = None
             messages.append((id, json_data))
@@ -232,9 +247,10 @@ class BGANotificationSession:
                 print("Unhandled message id %s %s" % (msgid, text))
 
         except:
-            print("Exception in message handler")
+            message = "Exception in message handler"
+            print(message)
             traceback.print_exc()
-            import pdb; pdb.set_trace()
+            raise RuntimeError(message)
 
     def __raw_notification_received(self, notification_data):
         message_type, message_data = notification_data
