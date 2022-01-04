@@ -113,7 +113,9 @@ class BGAQuarto(BGATable):
         assert(r.status_code == 200)
         #print(r.url)
         dict = json.loads(r.text)
-        assert(dict['status'])
+        if not dict['status']:
+            print("Game server didn't allow move: %s" % (dict,))
+            self.abandon_game()
 
     def me_place_piece(self):
         me = self.quarto.get_current_place_player()
@@ -150,7 +152,9 @@ class BGAQuarto(BGATable):
         assert(r.status_code == 200)
         #print(r.url)
         dict = json.loads(r.text)
-        assert(dict['status'])
+        if not dict['status']:
+            print("Game server didn't allow move: %s" % (dict,))
+            self.abandon_game()
 
     def someone_selected_piece(self, piece_number):
         self.selected_piece_number = piece_number

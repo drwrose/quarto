@@ -212,6 +212,10 @@ class BGATable:
             # In this case we must have accepted the start previously.
             self.accepted_invite = True
             self.accepted_start = True
+        elif status == 'asyncinit':
+            # We won't accept a "turn-based" game.
+            print("Don't want to play aync game")
+            self.abandon_game()
         else:
             print("Unhandled game status %s" % (status))
 
@@ -299,11 +303,11 @@ class BGATable:
             return
 
         decision_taken = args.get('decision_taken', None)
-        print("consider_table_decision: %s, decision taken: %s" % (decision_type, decision_taken))
+        my_decision = str(args.get('players', {}).get(str(self.bga.user_id), ''))
+        print("consider_table_decision: %s, decision taken: %s, my_decision: %s" % (decision_type, decision_taken, my_decision))
         print(args)
 
-
-        if decision_taken:
+        if my_decision and my_decision != 'undecided':
             # We've previously cast our decision on this question.
             return
 
@@ -362,6 +366,8 @@ class BGATable:
             print("playerstatus")
         elif notification_type == 'resultsAvailable':
             print("resultsAvailable")
+        elif notification_type == 'wouldlikethink':
+            print("wouldlikethink")
         else:
             print("Unhandled table notification type %s: %s" % (notification_type, data_dict))
 
