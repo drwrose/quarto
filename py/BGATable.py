@@ -22,26 +22,47 @@ class BGATable:
         self.accepted_invite = False
         self.accepted_start = False
 
-        self.notification = None
+        self.gs_notification = None
         self.gs_socketio_url = None
         self.gs_socketio_path = None
 
+        self.gen_notification = None
+        self.setup_gen_notifications()
+
         self.fetch_table_infos()
 
-    def setup_game_notifications(self):
-        """ We can call this as soon as we establish an actual
-        gameserver, not '0'. """
+    def setup_gen_notifications(self):
+        """ Starts listening for the general table notifications that
+        are managed by the main BGA server.  This includes requests to
+        abandon the game, and whatnot.  We can listen to this
+        immediately, as soon as we know the table_id. """
+
+        self.gen_notification = self.bga.create_notification_session(
+            message_callback = self.__gs_notification)
+
+        self.gen_notification.subscribe_channels(
+            "/table/t%s" % (self.table_id),
+            )
+
+    def setup_gs_notifications(self):
+        """ Starts listening for the in-game notifications that are
+        sent directly from the specific gameserver this table has been
+        assigned to.  We can call this as soon as we establish an
+        actual gameserver, not '0'. """
 
         print("Got gameserver %s, setting up notifications" % (self.gameserver))
         self.read_gameui_data()
 
-        self.notification = self.bga.create_notification_session(
-            message_callback = self.__channel_notification,
+        self.gs_notification = self.bga.create_notification_session(
+            message_callback = self.__gs_notification,
             socketio_url = self.gs_socketio_url,
             socketio_path = self.gs_socketio_path)
 
-        self.notification.subscribe_channels(
+        self.gs_notification.subscribe_channels(
             "/table/t%s" % (self.table_id),
+
+            # This channel seems to be for spectator notifications, we
+            # don't care about that.
             #"/table/ts%s" % (self.table_id),
             )
 
@@ -49,8 +70,12 @@ class BGATable:
         self.consider_turn()
 
     def cleanup(self):
-        self.bga.close_notification_session(self.notification)
-        self.notification = None
+        if self.gs_notification:
+            self.bga.close_notification_session(self.gs_notification)
+            self.gs_notification = None
+        if self.gen_notification:
+            self.bga.close_notification_session(self.gen_notification)
+            self.gen_notification = None
 
     def fetch_table_infos(self):
         """ Updates self.table_infos with the most recent data about
@@ -126,7 +151,7 @@ class BGATable:
         print("Found %s past notifications" % (len(past_notifications)))
         for bgamsg_data in past_notifications:
             channel = bgamsg_data['channel']
-            self.__channel_notification(channel, bgamsg_data, False)
+            self.__gs_notification(channel, bgamsg_data, False)
 
     def __update_table_infos(self, table_infos):
         """ A new table_infos dictionary has been acquired.  Store it,
@@ -146,7 +171,7 @@ class BGATable:
         if not self.gs_socketio_url and self.gameserver != '0':
             # If we have a real gameserver now, then sign up for
             # in-game notifications.
-            self.setup_game_notifications()
+            self.setup_gs_notifications()
 
         status = self.table_infos['status']
         print("updated table_info for %s, status = %s" % (self.table_id, status))
@@ -220,13 +245,13 @@ class BGATable:
         assert(r.status_code == 200)
         print(r.text)
 
-    def __channel_notification(self, channel, bgamsg_data, live):
-        """ A notification is received on the named channel, one of
-        the ones we subscribed to in the constructor. """
+    def __gs_notification(self, channel, bgamsg_data, live):
+        """ A notification is received on the named channel from the
+        gameserver that hosts this table. """
 
         data = bgamsg_data['data']
         packet_id = int(bgamsg_data.get('packet_id', 0))
-        #print("Table notification on %s, packet_id %s" % (channel, packet_id))
+        #print("gs notification on %s, packet_id %s" % (channel, packet_id))
 
         if channel == '/table/t%s' % (self.table_id):
             if packet_id == 0 or packet_id > self.last_packet_id:
@@ -237,37 +262,61 @@ class BGATable:
                     self.table_notification(notification_type, data_dict, live)
             else:
                 print("Ignoring out-of-sequence notification %s" % (notification_type))
-        elif channel == '/table/ts%s' % (self.table_id):
-            data_dict = data[0]
-            notification_type = data_dict['type']
-            if notification_type == 'updateSpectatorList':
-                print("updateSpectatorList")
-            else:
-                print("Unhandled table s notification type %s: %s" % (notification_type, data_dict))
-
         else:
-            print("Unhandled table notification on %s: %s" % (channel, data))
+            print("Unhandled gs notification on %s: %s" % (channel, data))
+
+    def __gen_notification(self, channel, bgamsg_data, live):
+        """ A notification is received on the named channel from the
+        main BGA server. """
+
+        data = bgamsg_data['data']
+        print("gen notification on %s" % (channel))
+
+        if channel == '/table/t%s' % (self.table_id):
+            for data_dict in data:
+                notification_type = data_dict['type']
+                self.table_notification(notification_type, data_dict, live)
+        else:
+            print("Unhandled gen notification on %s: %s" % (channel, data))
 
     def consider_table_decision(self, decision):
+        """ Some "table decision" has been offered by the other
+        player(s) in the game, e.g. to abandon the game or whatever.
+        Consider this. """
+
         decision_type = decision.get('decision_type', None)
         decision_taken = decision.get('decision_taken', None)
         print("consider_table_decision: %s, decision taken: %s" % (decision_type, decision_taken))
         print(decision)
 
-        # TODO.
+        if decision_type == 'abandon':
+            # Someone wants to abandon the game, we'll charitably go
+            # along with that.
+            if not decision_taken:
+                decide_url = 'https://boardgamearena.com/table/table/decide.html'
+                decide_params = {
+                    'decision' : 1,
+                    'table' : self.table_id,
+                    }
+
+                r = self.bga.session.get(decide_url, params = decide_params)
+                assert(r.status_code == 200)
+                #print(r.url)
+                dict = json.loads(r.text)
+                assert(dict['status'])
 
         # Confirm abandon:
         #https://boardgamearena.com/table/table/decide.html?decision=1&table=228866298&dojo.preventCache=1641154030529
 
     def table_notification(self, notification_type, data_dict, live):
+        args = data_dict.get('args', {})
         if notification_type == 'tableInfosChanged':
             print("tableInfosChanged")
-            table_infos = data_dict['args']
-            self.__update_table_infos(table_infos)
+            self.__update_table_infos(args)
         elif notification_type == 'allPlayersAccepted':
             print("allPlayersAccepted")
         elif notification_type == 'tableDecision':
-            self.consider_table_decision(data_dict)
+            self.consider_table_decision(args)
         elif notification_type in ['simpleNote', 'simpleNode']:
             note = data_dict.get('log')
             print("simpleNote: %s" % (note))
@@ -277,7 +326,7 @@ class BGATable:
             print("wakeupPlayers")
         elif notification_type == 'gameStateChange':
             print("gameStateChange, id is %s, activePlayer is %s, live is %s" % (self.game_state.get('id', None), self.game_state.get('active_player', None), live))
-            self.update_game_state(data_dict['args'], live)
+            self.update_game_state(args, live)
         elif notification_type == 'updateReflexionTime':
             print("updateReflexionTime")
         elif notification_type == 'finalScore':
