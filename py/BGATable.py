@@ -352,6 +352,8 @@ class BGATable:
             print("finalScore")
         elif notification_type == 'gameResultNeutralized':
             print("gameResultNeutralized")
+        elif notification_type == 'playerstatus':
+            print("playerstatus")
         else:
             print("Unhandled table notification type %s: %s" % (notification_type, data_dict))
 

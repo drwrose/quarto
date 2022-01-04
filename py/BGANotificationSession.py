@@ -31,6 +31,10 @@ class BGANotificationSession:
     Call cleanup() to unsubscribe to all channels in this object, shut
     down the threads, and close the socket.  """
 
+    # Threads should return from join() before this amount of time,
+    # otherwise give up.
+    thread_join_timeout = 5
+
     eio = '3'  # Don't know what this is really, but BGA passes it on every URL.
 
     # Messages
@@ -56,7 +60,8 @@ class BGANotificationSession:
         self.ping_thread = None
 
         # The ws_thread adds notifications to this queue; dispatch()
-        # pulls them out.
+        # (in the main thread) pulls them out.  This is how we pass
+        # notifications from ws_thread to the main thread.
         self.notification_queue = queue.Queue()
 
         self.subscribed_channels = set()
@@ -375,11 +380,14 @@ class BGANotificationSession:
         if ws:
             ws.close()
             self.ws = None
+            del ws
 
         thread = self.ws_thread
         self.ws_thread = None
         if thread:
-            thread.join()
+            thread.join(self.thread_join_timeout)
+            if thread.is_alive():
+                print("ws_thread did not shut down for %s:%s" % (self.sid, self.subscribe_url))
 
     def __ws_thread_main(self):
         # Actually, this doesn't seem to run *forever*, just until the
@@ -407,7 +415,9 @@ class BGANotificationSession:
         if self.ping_thread:
             thread = self.ping_thread
             self.ping_thread = None
-            thread.join()
+            thread.join(self.thread_join_timeout)
+            if thread.is_alive():
+                print("ping_thread did not shut down for %s:%s" % (self.sid, self.subscribe_url))
 
     def __ping_thread_main(self):
         while self.ping_thread:
