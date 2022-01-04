@@ -165,8 +165,8 @@ class BoardGameArena:
                 # Check for recent messages.
                 with self.notification_cvar:
                     self.notification_cvar.wait(1)
-                    for notification in self.notifications:
-                        notification.dispatch()
+                for notification in self.notifications:
+                    notification.dispatch()
 
                 # Poll the active tables from time to time, in case a
                 # message got dropped.

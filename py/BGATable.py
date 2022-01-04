@@ -166,7 +166,7 @@ class BGATable:
         # eventually does assign the table to a gameserver, it will
         # replace this '0' with a non-zero digit.
         assert(self.gameserver)
-        print("self.gameserver = %s" % (self.gameserver))
+        #print("self.gameserver = %s" % (self.gameserver))
 
         if not self.gs_notification and self.gameserver != '0':
             # If we have a real gameserver now, then sign up for
@@ -177,6 +177,12 @@ class BGATable:
 
     def update_table_infos(self):
         """ Called whenever self.table_infos has been updated. """
+
+        if [int(id) for id in self.table_infos['players']] == [int(self.bga.user_id)]:
+            # If we're the only player in the game, abandon it.
+            self.abandon_game()
+            return
+
         status = self.table_infos['status']
         print("updated table_info for %s, status = %s" % (self.table_id, status))
         if status == 'open':
@@ -354,6 +360,8 @@ class BGATable:
             print("gameResultNeutralized")
         elif notification_type == 'playerstatus':
             print("playerstatus")
+        elif notification_type == 'resultsAvailable':
+            print("resultsAvailable")
         else:
             print("Unhandled table notification type %s: %s" % (notification_type, data_dict))
 
@@ -362,21 +370,34 @@ class BGATable:
         if live:
             self.consider_turn()
 
-    def game_is_invalid(self):
+    def abandon_game(self):
         """ When a derived class determines the game has dropped into
         an invalid state, it should call this method.  This will
         propose a group abandon, which should shut down the game if we
         were the only player left. """
 
-        decide_url = 'https://boardgamearena.com/table/table/decide.html'
-        decide_params = {
-            'src' : 'menu',
-            'type' : 'abandon',
-            'decision' : 1,
-            'table' : self.table_id,
-            }
+        status = self.table_infos['status']
+        if status == 'open' or not self.accepted_start:
+            # If the game is still open, we have to quit it rather
+            # than abandon it.
+            quit_url = 'https://boardgamearena.com/table/table/quitgame.html'
+            quit_params = {
+                's' : 'table_quitgame',
+                'table' : self.table_id,
+                }
+            #?table=229290475&neutralized=true&s=table_quitgame
 
-        r = self.bga.session.get(decide_url, params = decide_params)
+        else:
+            # If the game has already started, we have to abandon it.
+            quit_url = 'https://boardgamearena.com/table/table/decide.html'
+            quit_params = {
+                'src' : 'menu',
+                'type' : 'abandon',
+                'decision' : 1,
+                'table' : self.table_id,
+                }
+
+        r = self.bga.session.get(quit_url, params = quit_params)
         assert(r.status_code == 200)
         print(r.url)
         dict = json.loads(r.text)

@@ -218,7 +218,7 @@ class BGANotificationSession:
         dispatch it appropriately. """
 
         try:
-            print("Got message on %s:%s" % (self.sid, self.subscribe_url))
+            #print("Got message on %s:%s" % (self.sid, self.subscribe_url))
 
             # Get the integer message_id from the beginning of the message.
             pattern = re.compile('([0-9]+)')
@@ -302,7 +302,7 @@ class BGANotificationSession:
             self.ws = None
 
     def __ws_close(self, ws, close_status_code, close_msg):
-        print("__ws_close(%s)" % (ws))
+        #print("__ws_close(%s)" % (ws))
         if ws == self.ws:
             self.ws = None
 

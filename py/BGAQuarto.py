@@ -122,7 +122,7 @@ class BGAQuarto(BGATable):
         if not self.quarto.get_board().is_unused(piece):
             # This can happen when the game is shutting down.
             print("Robot %s was handed an invalid piece %s" % (me.get_name(), piece.get_desc()))
-            self.game_is_invalid()
+            self.abandon_game()
             return
 
         print("Robot %s choosing place for piece %s, %s" % (me.get_name(), piece.get_desc(), self.selected_piece_number))
@@ -159,7 +159,7 @@ class BGAQuarto(BGATable):
         if not self.quarto.get_board().is_unused(piece):
             # This can happen when the game is shutting down.
             print("Someone selected an invalid piece %s" % (piece.get_desc()))
-            self.game_is_invalid()
+            self.abandon_game()
             return
 
     def someone_placed_piece(self, piece_number, x, y):
@@ -168,7 +168,7 @@ class BGAQuarto(BGATable):
         if not self.quarto.get_board().is_unused(piece):
             # This can happen when the game is shutting down.
             print("Someone placed an invalid piece %s" % (piece.get_desc()))
-            self.game_is_invalid()
+            self.abandon_game()
             return
 
         if piece_number != self.selected_piece_number:
@@ -179,7 +179,7 @@ class BGAQuarto(BGATable):
         if not self.quarto.get_board().is_empty(si):
             # This can happen when the game is shutting down.
             print("Someone placed a piece on an invalid square %s, %s" % (x, y))
-            self.game_is_invalid()
+            self.abandon_game()
             return
 
         self.quarto.place_piece(si, piece)
