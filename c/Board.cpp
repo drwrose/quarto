@@ -456,13 +456,13 @@ get_max_search_levels(int &max_me_levels, int &max_search_levels, int bias) cons
   } else if (empty_squares < 13) {
     // Need to start looking deeper now.
     max_me_levels = 3;
-    max_search_levels = 5;
+    max_search_levels = 4;
 
   } else if (empty_squares < 14) {
     // Look only a few moves ahead, but not so few that we overlook an
     // early win.
     max_me_levels = 3;
-    max_search_levels = 4;
+    max_search_levels = 3;
 
   } else if (empty_squares < 15) {
     // Just look ahead enough not to get screwed.
