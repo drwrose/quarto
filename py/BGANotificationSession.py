@@ -49,13 +49,16 @@ class BGANotificationSession:
     # about here.
     notification_msgid = 42
 
-    def __init__(self, bga, parent_name = None, notification_queue = None, message_callback = None, socketio_url = None, socketio_path = None):
-        self.bga = bga
+    def __init__(self, bga, parent_name = None, notification_queue = None, message_callback = None, socketio_url = None, socketio_path = None, auto_restart = False):
+        # If auto_restart is True, the websocket will reconnect itself
+        # if it gets dropped by the server.
 
+        self.bga = bga
         self.notification_queue = notification_queue
         self.message_callback = message_callback
         self.socketio_url = socketio_url
         self.socketio_path = socketio_path
+        self.auto_restart = auto_restart
         self.subscribe_url = '%s/%s/' % (self.socketio_url, self.socketio_path)
 
         self.name = '%s %s' % (parent_name, self.subscribe_url)
@@ -324,6 +327,52 @@ class BGANotificationSession:
         assert not self.ws
         assert not self.ws_thread
 
+        thread_name = 'Websocket thread %s' % (self.name)
+        self.ws_thread = threading.Thread(target = self.__ws_thread_main, name = thread_name)
+        self.ws_thread.start()
+
+    def stop_ws(self):
+        """ Close the websocket and thread previously created by
+        start_ws(). """
+
+        # This means we want to disable auto_restart.
+        self.auto_restart = False
+
+        if not self.ws and not self.ws_thread:
+            # No-op: already closed.
+            return
+
+        # This should wake up the thread.
+        ws = self.ws
+        if ws:
+            ws.close()
+            self.ws = None
+            del ws
+
+        thread = self.ws_thread
+        self.ws_thread = None
+        if thread:
+            thread.join(self.thread_join_timeout)
+            if thread.is_alive():
+                print("ws_thread did not shut down for %s:%s" % (self.sid, self.subscribe_url))
+
+    def __ws_thread_main(self):
+        # Most of the work is done in __ws_thread_one_pass(), which
+        # connects and listens until the socket is disconnected.
+        self.__ws_thread_one_pass()
+
+        # As long as self.auto_restart is True, we will automatically
+        # reconnect and continue to listen.
+        while self.auto_restart:
+            self.__ws_thread_one_pass()
+
+    def __ws_thread_one_pass(self):
+        """ Connect the websocket and listen for messages until we get
+        disconnected for whatever reason. """
+
+        assert not self.ws
+
+        # Here in the start of the websocket thread, open the new websocket.
         websocket_params = {
             'user' : self.bga.user_id,
             'name' : self.bga.user_name,
@@ -349,35 +398,8 @@ class BGANotificationSession:
                                          on_close = self.__ws_close)
 
 
-        thread_name = 'Websocket thread %s' % (self.name)
-        self.ws_thread = threading.Thread(target = self.__ws_thread_main, name = thread_name)
-        self.ws_thread.start()
-
-    def stop_ws(self):
-        """ Close the websocket and thread previously created by
-        start_ws(). """
-
-        if not self.ws and not self.ws_thread:
-            # No-op: already closed.
-            return
-
-        # This should wake up the thread.
-        ws = self.ws
-        if ws:
-            ws.close()
-            self.ws = None
-            del ws
-
-        thread = self.ws_thread
-        self.ws_thread = None
-        if thread:
-            thread.join(self.thread_join_timeout)
-            if thread.is_alive():
-                print("ws_thread did not shut down for %s:%s" % (self.sid, self.subscribe_url))
-
-    def __ws_thread_main(self):
         # Actually, this doesn't seem to run *forever*, just until the
-        # socket is closed.
+        # socket is closed.  That's why we have self.auto_restart.
         ws = self.ws
         if ws:
             ws.run_forever(sslopt = {"cert_reqs" : ssl.CERT_NONE})
