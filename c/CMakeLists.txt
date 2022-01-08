@@ -19,7 +19,7 @@ find_package(Threads)
 set(BUILD_MQUARTO TRUE CACHE BOOL "Build mquarto command-line tool")
 set(BUILD_PYQUARTO TRUE CACHE BOOL "Build pyquarto Python module")
 
-set(QUARTO_SOURCES Quarto.h Quarto.cpp GameState.h GameState.cpp Board.h Board.cpp Piece.h Piece.cpp Player.h Player.cpp SearchResult.h SearchResult.cpp)
+set(QUARTO_SOURCES Quarto.h Quarto.cpp GameState.h GameState.cpp Board.h Board.cpp Piece.h Piece.cpp Player.h Player.cpp SearchAccumulator.h SearchAccumulator.cpp SearchResult.h SearchResult.cpp)
 set(QUARTO_SWIG pyquarto.i)
 
 if (BUILD_PYQUARTO)

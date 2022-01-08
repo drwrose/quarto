@@ -3,6 +3,7 @@
 
 #include "Piece.h"
 #include "SearchResult.h"
+#include "SearchAccumulator.h"
 
 #include <stdint.h>
 #include <assert.h>
@@ -78,16 +79,17 @@ public:
 
 private:
   void calc_win();
-  void calc_row_win(int a, int b);
-  void calc_row_win(int a, int b, int c);
   void calc_row_win(int a, int b, int c, int d);
-  void calc_row_near_win(int a, int b, int c);
+
+  int count_near_wins() const;
+  int count_row_near_wins(int a, int b, int c, int d) const;
+  int count_row_near_win(int a, int b, int c) const;
 
   void get_max_search_levels(int &max_me_levels, int &max_search_levels, int bias = 0) const;
 
   void choose_from_result_list(SearchResult &best_result, const std::vector<SearchResult> &result_list, bool show_log = false) const;
-  void search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int max_search_levels, bool save_piece, bool show_log = false) const;
-  void search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int max_search_levels, Piece give_piece, bool show_log = false) const;
+  void search_wins(SearchAccumulator &me_result, int me_player_index, int max_me_levels, int max_search_levels, bool save_piece, bool show_log = false) const;
+  void search_wins(SearchAccumulator &me_result, int me_player_index, int max_me_levels, int max_search_levels, Piece give_piece, bool show_log = false) const;
 
 private:
   Piece::Code _board[num_squares];
@@ -96,7 +98,6 @@ private:
   Piece::PieceMask _used_pieces;
   bool _advanced;
   BoardMask _win;
-  int _near_win_count;
 };
 
 #endif  // Board

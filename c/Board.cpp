@@ -16,7 +16,6 @@ Board() {
   _used_pieces = 0;
   _advanced = false;
   _win = 0;
-  _near_win_count = 0;
 }
 
 // This constructor makes a copy of the Board, and then places the
@@ -199,6 +198,7 @@ choose_square_and_piece(unsigned int &chosen_si, Piece &chosen_piece, int me_pla
     SearchResult next_result;
     next_result.set_aux_si(si);
     next_board->search_wins(next_result, me_player_index, max_me_levels - 1, max_search_levels - 1, true);
+    next_result.set_near_win_count(next_board->count_near_wins());
     result_list.push_back(next_result);
   }
 
@@ -255,115 +255,36 @@ get_formatted_output() const {
 }
 
 // Fills _win with a bitmask of all of the squares that contribute to
-// a win (four in a row).  Sets it to 0 if there is no win.  Also,
-// sets _near_win_count to the number of rows that are one piece short
-// of a win.
+// a win (four in a row).  Sets it to 0 if there is no win.
 void Board::
 calc_win() {
   _win = 0;
-  _near_win_count = 0;
 
-  if (num_rows == 4 && num_cols == 4) {
-    // This is the normal case, a 4x4 grid.
+  // Check for a winning 4-in-a-row.
+  calc_row_win(0, 1, 2, 3);
+  calc_row_win(4, 5, 6, 7);
+  calc_row_win(8, 9, 10, 11);
+  calc_row_win(12, 13, 14, 15);
+  calc_row_win(0, 4, 8, 12);
+  calc_row_win(1, 5, 9, 13);
+  calc_row_win(2, 6, 10, 14);
+  calc_row_win(3, 7, 11, 15);
+  calc_row_win(0, 5, 10, 15);
+  calc_row_win(3, 6, 9, 12);
 
-    // Check for a winning 4-in-a-row.
-    calc_row_win(0, 1, 2, 3);
-    calc_row_win(4, 5, 6, 7);
-    calc_row_win(8, 9, 10, 11);
-    calc_row_win(12, 13, 14, 15);
-    calc_row_win(0, 4, 8, 12);
-    calc_row_win(1, 5, 9, 13);
-    calc_row_win(2, 6, 10, 14);
-    calc_row_win(3, 7, 11, 15);
-    calc_row_win(0, 5, 10, 15);
-    calc_row_win(3, 6, 9, 12);
-
-    if (_advanced) {
-      // If the advanced rules are in effect, check also for winning
-      // 2x2 squares.
-      calc_row_win(0, 1, 4, 5);
-      calc_row_win(1, 2, 5, 6);
-      calc_row_win(2, 3, 6, 7);
-      calc_row_win(4, 5, 8, 9);
-      calc_row_win(5, 6, 9, 10);
-      calc_row_win(6, 7, 10, 11);
-      calc_row_win(8, 9, 12, 13);
-      calc_row_win(9, 10, 13, 14);
-      calc_row_win(10, 11, 14, 15);
-    }
-
-  } else if (num_rows == 3 && num_cols == 3) {
-    // This is a degenerate case, a 3x3 board.  Only for testing, not
-    // the real 4x4 game.
-    calc_row_win(0, 1, 2);
-    calc_row_win(3, 4, 5);
-    calc_row_win(6, 7, 8);
-    calc_row_win(0, 3, 6);
-    calc_row_win(1, 4, 7);
-    calc_row_win(2, 5, 8);
-    calc_row_win(0, 4, 8);
-    calc_row_win(2, 4, 6);
-
-  } else if (num_rows == 2 && num_cols == 2) {
-    // This is a degenerate case, a 2x2 board.  Only for testing, not
-    // the real 4x4 game.
-    calc_row_win(0, 1);
-    calc_row_win(2, 3);
-    calc_row_win(0, 2);
-    calc_row_win(1, 3);
-    calc_row_win(0, 3);
-    calc_row_win(1, 2);
-
-  } else {
-    // Not implemented.
-    assert(false);
+  if (_advanced) {
+    // If the advanced rules are in effect, check also for winning
+    // 2x2 squares.
+    calc_row_win(0, 1, 4, 5);
+    calc_row_win(1, 2, 5, 6);
+    calc_row_win(2, 3, 6, 7);
+    calc_row_win(4, 5, 8, 9);
+    calc_row_win(5, 6, 9, 10);
+    calc_row_win(6, 7, 10, 11);
+    calc_row_win(8, 9, 12, 13);
+    calc_row_win(9, 10, 13, 14);
+    calc_row_win(10, 11, 14, 15);
   }
-}
-
-// If the indicated squares indicate a win, adds the appropriate
-// bitmask to _win.  Otherwise, does nothing.
-void Board::
-calc_row_win(int a, int b) {
-  if (is_empty(a) || is_empty(b)) {
-    // The row is not yet filled, it's not a win.
-    return;
-  }
-
-  // The row is filled, it's a win if one of the attribs all match.
-  if ((_board[a] & _board[b]) != 0) {
-    // One of the 1-bits matches.
-    _win |= (get_mask(a) | get_mask(b));
-  }
-
-  if ((_board[a] | _board[b]) != Piece::all_attribs) {
-    // One of the 0-bits matches.
-    _win |= (get_mask(a) | get_mask(b));
-  }
-
-  // None of the attribs match.
-}
-
-// If the indicated squares indicate a win, adds the appropriate
-// bitmask to _win.  Otherwise, does nothing.
-void Board::
-calc_row_win(int a, int b, int c) {
-  if (is_empty(a) || is_empty(b) || is_empty(c)) {
-    // The row is not yet filled, it's not a win.
-    return;
-  }
-
-  // The row is filled, it's a win if one of the attribs all match.
-  if ((_board[a] & _board[b] & _board[c]) != 0) {
-    // One of the 1-bits matches.
-    _win |= (get_mask(a) | get_mask(b) | get_mask(c));
-  }
-
-  if ((_board[a] | _board[b] | _board[c]) != Piece::all_attribs) {
-    // One of the 0-bits matches.
-    _win |= (get_mask(a) | get_mask(b) | get_mask(c));
-  }
-
-  // None of the attribs match.
 }
 
 // Called for four squares in a row.  If the indicated squares
@@ -372,19 +293,7 @@ calc_row_win(int a, int b, int c) {
 void Board::
 calc_row_win(int a, int b, int c, int d) {
   int empty_count = (int)is_empty(a) + (int)is_empty(b) + (int)is_empty(c) + (int)is_empty(d);
-  if (empty_count == 1) {
-    if (is_empty(a)) {
-      calc_row_near_win(b, c, d);
-    } else if (is_empty(b)) {
-      calc_row_near_win(a, c, d);
-    } else if (is_empty(c)) {
-      calc_row_near_win(a, b, d);
-    } else {
-      assert(is_empty(d));
-      calc_row_near_win(a, b, c);
-    }
-    return;
-  } else if (empty_count != 0) {
+  if (empty_count != 0) {
     // The row is not yet filled, it's not a win.
     return;
   }
@@ -403,23 +312,79 @@ calc_row_win(int a, int b, int c, int d) {
   // None of the attribs match.
 }
 
+// Returns the number of rows (or squares) that are "near wins",
+// e.g. three matching pieces in the same row, with an empty square.
+int Board::
+count_near_wins() const {
+  int near_wins = 0;
+
+  near_wins += count_row_near_wins(0, 1, 2, 3);
+  near_wins += count_row_near_wins(4, 5, 6, 7);
+  near_wins += count_row_near_wins(8, 9, 10, 11);
+  near_wins += count_row_near_wins(12, 13, 14, 15);
+  near_wins += count_row_near_wins(0, 4, 8, 12);
+  near_wins += count_row_near_wins(1, 5, 9, 13);
+  near_wins += count_row_near_wins(2, 6, 10, 14);
+  near_wins += count_row_near_wins(3, 7, 11, 15);
+  near_wins += count_row_near_wins(0, 5, 10, 15);
+  near_wins += count_row_near_wins(3, 6, 9, 12);
+
+  if (_advanced) {
+    // If the advanced rules are in effect, check also for winning
+    // 2x2 squares.
+    near_wins += count_row_near_wins(0, 1, 4, 5);
+    near_wins += count_row_near_wins(1, 2, 5, 6);
+    near_wins += count_row_near_wins(2, 3, 6, 7);
+    near_wins += count_row_near_wins(4, 5, 8, 9);
+    near_wins += count_row_near_wins(5, 6, 9, 10);
+    near_wins += count_row_near_wins(6, 7, 10, 11);
+    near_wins += count_row_near_wins(8, 9, 12, 13);
+    near_wins += count_row_near_wins(9, 10, 13, 14);
+    near_wins += count_row_near_wins(10, 11, 14, 15);
+  }
+
+  return near_wins;
+}
+
+// Returns 1 if this row is a near win, 0 if it is not.
+int Board::
+count_row_near_wins(int a, int b, int c, int d) const {
+  int empty_count = (int)is_empty(a) + (int)is_empty(b) + (int)is_empty(c) + (int)is_empty(d);
+  if (empty_count == 1) {
+    if (is_empty(a)) {
+      return count_row_near_win(b, c, d);
+    } else if (is_empty(b)) {
+      return count_row_near_win(a, c, d);
+    } else if (is_empty(c)) {
+      return count_row_near_win(a, b, d);
+    } else {
+      assert(is_empty(d));
+      return count_row_near_win(a, b, c);
+    }
+  }
+
+  // The row is filled.
+  return 0;
+}
+
 // Called for three occupied squares in a row of four squares.  If the
 // indicated squares indicate a potential near-win--that is, all three
-// pieces match at least one attribute--increments _near_win_count.
-// Otherwise, does nothing.
-void Board::
-calc_row_near_win(int a, int b, int c) {
+// pieces match at least one attribute--returns 1.  Otherwise, returns
+// 0.
+int Board::
+count_row_near_win(int a, int b, int c) const {
   if ((_board[a] & _board[b] & _board[c]) != 0) {
     // One of the 1-bits matches.
-    _near_win_count++;
+    return 1;
   }
 
   if ((_board[a] | _board[b] | _board[c]) != Piece::all_attribs) {
     // One of the 0-bits matches.
-    _near_win_count++;
+    return 1;
   }
 
   // None of the attribs match.
+  return 0;
 }
 
 // FIlls max_me_levels with the maximum number of levels we continue
@@ -553,10 +518,10 @@ choose_from_result_list(SearchResult &best_result, const std::vector<SearchResul
 // Recursively search following board patterns for forced win
 // conditions, starting with choosing a give_piece.  Fills win_counts
 // with the count of win conditions detected for each player.  If
-// save_piece is true, then me_result.get_aux_piece() is also filled
+// save_piece is true, then me_accumulator.get_aux_piece() is also filled
 // with the chosen give_piece.
 void Board::
-search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int max_search_levels, bool save_piece, bool show_log) const {
+search_wins(SearchAccumulator &me_accumulator, int me_player_index, int max_me_levels, int max_search_levels, bool save_piece, bool show_log) const {
   if (show_log) {
     std::cerr << this << "->search_wins for piece(..., " << me_player_index << ", " << max_search_levels << ")\n";
     write(std::cerr);
@@ -570,13 +535,9 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
   if (is_game_over()) {
     // The game resulted in a tie.
     if (show_log) std::cerr << this << " trivial tie\n";
-    me_result.inc_tie();
+    me_accumulator.inc_tie();
     return;
   }
-
-  // Count up the near-wins, we use these to weight a choice when
-  // there aren't other obvious benefits for one choice or another.
-  me_result.inc_near_win(_near_win_count);
 
   bool my_turn = (me_player_index == get_current_give_player_index());
   if (save_piece) {
@@ -588,17 +549,17 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
 
     if (show_log) std::cerr << this << " considering only " << give_piece << "\n";
 
-    SearchResult next_result;
-    search_wins(next_result, me_player_index, max_me_levels, max_search_levels, give_piece);
+    SearchAccumulator next_accumulator;
+    search_wins(next_accumulator, me_player_index, max_me_levels, max_search_levels, give_piece);
 
-    if (show_log) std::cerr << this << " " << give_piece << " results in " << next_result << "\n";
-    me_result += next_result;
-    me_result.set_aux_piece(give_piece);
-    if (show_log) std::cerr << this << " done, computed " << me_result << "\n";
+    if (show_log) std::cerr << this << " " << give_piece << " results in " << next_accumulator << "\n";
+    me_accumulator += next_accumulator;
+    me_accumulator.set_aux_piece(give_piece);
+    if (show_log) std::cerr << this << " done, computed " << me_accumulator << "\n";
     return;
   }
 
-  SearchResult forced_result;
+  SearchAccumulator forced_accumulator;
   bool got_any = false;
 
   unsigned int specific_pi;
@@ -624,17 +585,16 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
 
     if (show_log) std::cerr << this << " considering " << give_piece << "\n";
 
-    SearchResult next_result;
-    search_wins(next_result, me_player_index, max_me_levels, max_search_levels, give_piece);
+    SearchAccumulator next_accumulator;
+    search_wins(next_accumulator, me_player_index, max_me_levels, max_search_levels, give_piece);
 
-    if (show_log) std::cerr << this << " " << give_piece << " results in " << next_result << "\n";
+    if (show_log) std::cerr << this << " " << give_piece << " results in " << next_accumulator << "\n";
 
     if (my_turn) {
       // On my turn, we don't consider choosing pieces that would
       // result in a forced loss for us, unless we have to.
-      if (next_result.is_forced_loss()) {
-        me_result.inc_near_win(next_result);
-        forced_result += next_result;
+      if (next_accumulator.is_forced_loss()) {
+        forced_accumulator += next_accumulator;
         if (show_log) std::cerr << this << " skipping my forced loss\n";
         continue;
       }
@@ -643,26 +603,25 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
       // On the opponent's turn, we don't consider choosing pieces
       // that would result in a forced win for us, unless we have to.
       // But we do count a potential win as an "accidental" win.
-      if (next_result.is_forced_win()) {
-        me_result.inc_accidental_win(next_result);
-        me_result.inc_near_win(next_result);
-        forced_result += next_result;
+      if (next_accumulator.is_forced_win()) {
+        me_accumulator.inc_accidental_win(next_accumulator);
+        forced_accumulator += next_accumulator;
         if (show_log) std::cerr << this << " skipping their forced loss\n";
         continue;
       }
     }
 
     // If it's not one of the above, count it in.
-    me_result += next_result;
+    me_accumulator += next_accumulator;
     got_any = true;
   }
 
   // Every move was forced.
   if (!got_any) {
-    me_result += forced_result;
+    me_accumulator += forced_accumulator;
   }
 
-  if (show_log) std::cerr << this << " done, computed " << me_result << "\n";
+  if (show_log) std::cerr << this << " done, computed " << me_accumulator << "\n";
 }
 
 // Recursively search following board patterns for forced win
@@ -670,7 +629,7 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
 // win_counts with the count of win conditions detected for each
 // player.
 void Board::
-search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int max_search_levels, Piece give_piece, bool show_log) const {
+search_wins(SearchAccumulator &me_accumulator, int me_player_index, int max_me_levels, int max_search_levels, Piece give_piece, bool show_log) const {
   if (show_log) {
     std::cerr << this << "->search_wins for square(..., " << me_player_index << ", " << max_search_levels << ", " << give_piece << ")\n";
     write(std::cerr);
@@ -683,13 +642,9 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
   if (is_game_over()) {
     // The game resulted in a tie.
     if (show_log) std::cerr << this << " trivial tie\n";
-    me_result.inc_tie();
+    me_accumulator.inc_tie();
     return;
   }
-
-  // Count up the near-wins, we use these to weight a choice when
-  // there aren't other obvious benefits for one choice or another.
-  me_result.inc_near_win(_near_win_count);
 
   std::vector<std::shared_ptr<Board> > next_boards;
 
@@ -722,11 +677,11 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
       assert(my_turn == (next_board->get_winning_player_index() == me_player_index));
       if (my_turn) {
         // It's a win for me!
-        me_result.inc_win();
+        me_accumulator.inc_win();
         if (show_log) std::cerr << this << " instant win at " << si << "\n";
       } else {
         // It's a win for someone else.
-        me_result.inc_lose();
+        me_accumulator.inc_lose();
         if (show_log) std::cerr << this << " instant loss at " << si << "\n";
       }
       return;
@@ -739,23 +694,22 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
 
   // OK, we didn't find an immediate win, see what wins we
   // have in subsequent turns.
-  SearchResult forced_result;
+  SearchAccumulator forced_accumulator;
   bool got_any = false;
 
-  SearchResult sum_result;
+  SearchAccumulator sum_accumulator;
 
   for (auto next_board : next_boards) {
-    SearchResult next_result;
+    SearchAccumulator next_accumulator;
     if (show_log) std::cerr << this << " recursing into " << next_board << " {\n";
-    next_board->search_wins(next_result, me_player_index, max_me_levels - 1, max_search_levels - 1, false);
-    if (show_log) std::cerr << "} back in " << this << ", " << next_result << "\n";
+    next_board->search_wins(next_accumulator, me_player_index, max_me_levels - 1, max_search_levels - 1, false);
+    if (show_log) std::cerr << "} back in " << this << ", " << next_accumulator << "\n";
 
     if (my_turn) {
       // On my turn, we don't consider choosing squares that would
       // result in a forced loss for us, unless we have to.
-      if (next_result.is_forced_loss()) {
-        sum_result.inc_near_win(next_result);
-        forced_result += next_result;
+      if (next_accumulator.is_forced_loss()) {
+        forced_accumulator += next_accumulator;
         if (show_log) std::cerr << this << " skipping my forced loss\n";
         continue;
       }
@@ -764,54 +718,50 @@ search_wins(SearchResult &me_result, int me_player_index, int max_me_levels, int
       // On the opponent's turn, we don't consider choosing squares
       // that would result in a forced win for us, unless we have to.
       // But we do count a potential win as an "accidental" win.
-      if (next_result.is_forced_win()) {
-        sum_result.inc_near_win(next_result);
-        sum_result.inc_accidental_win(next_result);
-        forced_result += next_result;
+      if (next_accumulator.is_forced_win()) {
+        sum_accumulator.inc_accidental_win(next_accumulator);
+        forced_accumulator += next_accumulator;
         if (show_log) std::cerr << this << " skipping their forced loss\n";
         continue;
       }
     }
 
     // If it's not one of the above, count it in.
-    sum_result += next_result;
+    sum_accumulator += next_accumulator;
     got_any = true;
   }
 
   // Every move was forced.
   if (!got_any) {
-    sum_result += forced_result;
+    sum_accumulator += forced_accumulator;
   }
 
-  if (show_log) std::cerr << this << " done, computed " << sum_result << "\n";
+  if (show_log) std::cerr << this << " done, computed " << sum_accumulator << "\n";
 
-  // We always accumulate the near_win count.
-  me_result.inc_near_win(sum_result);
-
-  if (sum_result.is_forced_win()) {
+  if (sum_accumulator.is_forced_win()) {
     // We have a forced win!  All subsequent moves result in a win for us.
     if (show_log) std::cerr << this << " is a win\n";
-    me_result.inc_win(sum_result);
+    me_accumulator.inc_win(sum_accumulator);
 
-  } else if (sum_result.is_forced_loss()) {
+  } else if (sum_accumulator.is_forced_loss()) {
     // We have a forced loss.  All subsequent moves result in a loss for us.
     if (show_log) std::cerr << this << " is a loss\n";
-    me_result.inc_lose(sum_result);
-    me_result.inc_accidental_win(sum_result);
+    me_accumulator.inc_lose(sum_accumulator);
+    me_accumulator.inc_accidental_win(sum_accumulator);
 
-  } else if (sum_result.is_forced_tie()) {
+  } else if (sum_accumulator.is_forced_tie()) {
     // Everything from here on is a tie.
     if (show_log) std::cerr << this << " is a tie\n";
-    me_result.inc_tie(sum_result);
-    me_result.inc_accidental_win(sum_result);
+    me_accumulator.inc_tie(sum_accumulator);
+    me_accumulator.inc_accidental_win(sum_accumulator);
 
-  } else if (sum_result.is_accidental_win()) {
+  } else if (sum_accumulator.is_accidental_win()) {
     // We'll win if the opponent slips up.
     if (show_log) std::cerr << this << " is an accidental win\n";
-    me_result.inc_accidental_win(sum_result);
+    me_accumulator.inc_accidental_win(sum_accumulator);
 
   } else {
     if (show_log) std::cerr << this << " is mixed\n";
-    me_result += sum_result;
+    me_accumulator += sum_accumulator;
   }
 }
