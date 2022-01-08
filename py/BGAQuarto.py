@@ -70,6 +70,8 @@ class BGAQuarto(BGATable):
             super(BGAQuarto, self).table_notification(notification_type, data_dict, live)
 
     def my_turn(self):
+        assert(self.is_table_thread())
+
         if 'id' not in self.game_state:
             # Game hasn't started yet, really.
             super(BGAQuarto, self).my_turn()

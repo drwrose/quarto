@@ -6,8 +6,9 @@ class BGANotifications:
     BGANotificationSessions, listening for various asynchronous
     messages from different BGA servers. """
 
-    def __init__(self, bga):
+    def __init__(self, bga, name = None):
         self.bga = bga
+        self.name = name
         # The list of all BGANotificationSession objects, and the cvar
         # that is notified when a new notification comes in on one of
         # them.
@@ -36,7 +37,7 @@ class BGANotifications:
 
     def create_notification_session(self, message_callback = None, socketio_url = 'https://r2.boardgamearena.net', socketio_path = 'r'):
         """ Signs up for notifications of events from BGA. """
-        notification = BGANotificationSession(self.bga, self.notification_queue, message_callback = message_callback, socketio_url = socketio_url, socketio_path = socketio_path)
+        notification = BGANotificationSession(self.bga, parent_name = self.name, notification_queue = self.notification_queue, message_callback = message_callback, socketio_url = socketio_url, socketio_path = socketio_path)
         self.notification_sessions.append(notification)
         return notification
 

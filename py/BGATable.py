@@ -2,6 +2,8 @@ import re
 import json
 import ast
 import time
+import threading
+from BGANotifications import BGANotifications
 
 from http.client import HTTPConnection
 #HTTPConnection.debuglevel = 1
@@ -18,6 +20,7 @@ class BGATable:
         self.bga = bga
         self.table_id = table_id
         self.table_infos = None
+        self.table_infos_stale = True
         self.gameserver = None
         self.game_name = None
         self.last_packet_id = 0
@@ -33,9 +36,49 @@ class BGATable:
         self.gs_socketio_path = None
 
         self.gen_notification = None
-        self.setup_gen_notifications()
 
+        self.lock = threading.RLock()
+
+        self.notifications = BGANotifications(self.bga, name = str(self.table_id))
+
+        # Now we create our own thread to dispatch our table-specific
+        # notifications.
+        self.shutdown = False
+        thread_name = 'Table thread %s' % (self.table_id)
+        self.table_thread = threading.Thread(target = self.table_thread_main, name = thread_name)
+        self.table_thread.start()
+
+    def cleanup(self):
+        self.shutdown = True
+        self.table_thread.join()
+
+        self.notifications.cleanup()
+        self.gs_notification = None
+        self.gen_notification = None
+
+    def table_thread_main(self):
+        """ This is the primary thread that serves the table. """
+
+        self.setup_gen_notifications()
         self.fetch_table_infos()
+
+        while not self.shutdown:
+            # Check for active notifications
+            self.notifications.dispatch(block = True, timeout = 1)
+
+            # We should also poll from time to time, in case a message
+            # got dropped.
+            self.poll()
+
+    def is_table_thread(self):
+        """ Returns True if we are currently running in the table
+        thread, False otherwise.  A sanity check. """
+        return threading.current_thread() == self.table_thread
+
+    def is_main_thread(self):
+        """ Returns True if we are currently running in the main
+        thread, False otherwise.  A sanity check. """
+        return threading.current_thread() == self.bga.main_thread
 
     def setup_gen_notifications(self):
         """ Starts listening for the general table notifications that
@@ -43,7 +86,9 @@ class BGATable:
         abandon the game, and whatnot.  We can listen to this
         immediately, as soon as we know the table_id. """
 
-        self.gen_notification = self.bga.create_notification_session(
+        assert(self.is_table_thread())
+
+        self.gen_notification = self.notifications.create_notification_session(
             message_callback = self.__gs_notification)
 
         self.gen_notification.subscribe_channels(
@@ -54,12 +99,14 @@ class BGATable:
         """ Starts listening for the in-game notifications that are
         sent directly from the specific gameserver this table has been
         assigned to.  We can call this as soon as we establish an
-        actual gameserver, not '0'. """
+        actual gameserver, not '0'.  Called only in the table thread. """
+
+        assert(self.is_table_thread())
 
         print("Got gameserver %s, setting up notifications" % (self.gameserver))
         self.read_gameui_data()
 
-        self.gs_notification = self.bga.create_notification_session(
+        self.gs_notification = self.notifications.create_notification_session(
             message_callback = self.__gs_notification,
             socketio_url = self.gs_socketio_url,
             socketio_path = self.gs_socketio_path)
@@ -75,18 +122,14 @@ class BGATable:
         self.fetch_notification_history()
         self.consider_turn()
 
-    def cleanup(self):
-        if self.gs_notification:
-            self.bga.close_notification_session(self.gs_notification)
-            self.gs_notification = None
-        if self.gen_notification:
-            self.bga.close_notification_session(self.gen_notification)
-            self.gen_notification = None
-
     def fetch_table_infos(self):
         """ Updates self.table_infos with the most recent data about
         this game from BGA.  This is the top-level information about
-        the game and how it is hosted. """
+        the game and how it is hosted.
+
+        This is called only in the table thread. """
+
+        assert(self.is_table_thread())
 
         tableinfo_url = 'https://boardgamearena.com/table/table/tableinfos.html'
         tableinfo_params = {
@@ -104,6 +147,8 @@ class BGATable:
         this particular table's page.  This data is only available
         once we have been told a specific gameserver number, other
         than '0' which means it hasn't been assigned yet. """
+
+        assert(self.is_table_thread())
 
         assert(self.gameserver and self.gameserver != '0')
 
@@ -140,6 +185,8 @@ class BGATable:
             self.consider_table_decision(args)
 
     def fetch_notification_history(self):
+        assert(self.is_table_thread())
+
         # TODO: Is the game_name really repeated, or does the second
         # name come from another source?
         history_url = 'https://boardgamearena.com/%s/%s/%s/notificationHistory.html' % (self.gameserver, self.game_name, self.game_name)
@@ -161,9 +208,13 @@ class BGATable:
 
     def __apply_table_infos(self, table_infos):
         """ A new table_infos dictionary has been acquired.  Store it,
-        and deal with whatever it says. """
+        and deal with whatever it says.  This is called only in the
+        table thread. """
+
+        assert(self.is_table_thread())
 
         self.table_infos = table_infos
+        self.table_infos_stale = False
         self.gameserver = self.table_infos['gameserver']
         self.game_name = self.table_infos['game_name']
 
@@ -182,7 +233,10 @@ class BGATable:
         self.update_table_infos()
 
     def update_table_infos(self):
-        """ Called whenever self.table_infos has been updated. """
+        """ Called whenever self.table_infos has been updated.  This
+        is called only in the table thread. """
+
+        assert(self.is_table_thread())
 
         self.last_message = time.time()
 
@@ -228,6 +282,10 @@ class BGATable:
             print("Unhandled game status %s" % (status))
 
     def accept_invite(self):
+        """ Called in the table thread. """
+
+        assert(self.is_table_thread())
+
         join_url = 'https://boardgamearena.com/table/table/joingame.html'
         join_params = {
             'table' : self.table_id,
@@ -239,6 +297,11 @@ class BGATable:
         self.accepted_invite = True
 
     def accept_start(self):
+        """ Called in the main thread (not the table thread) by the
+        parent class. """
+
+        assert(self.is_main_thread())
+
         accept_url = 'https://boardgamearena.com/table/table/acceptGameStart.html'
         accept_params = {
             'table' : self.table_id,
@@ -268,7 +331,10 @@ class BGATable:
 
     def __gs_notification(self, channel, bgamsg_data, live):
         """ A notification is received on the named channel from the
-        gameserver that hosts this table. """
+        gameserver that hosts this table.  This method is called only
+        on the table thread. """
+
+        assert(self.is_table_thread())
 
         data = bgamsg_data['data']
         packet_id = int(bgamsg_data.get('packet_id', 0))
@@ -288,7 +354,10 @@ class BGATable:
 
     def __gen_notification(self, channel, bgamsg_data, live):
         """ A notification is received on the named channel from the
-        main BGA server. """
+        main BGA server.  This method is called only on the table
+        thread. """
+
+        assert(self.is_table_thread())
 
         data = bgamsg_data['data']
         print("gen notification on %s" % (channel))
@@ -304,6 +373,8 @@ class BGATable:
         """ Some "table decision" has been offered by the other
         player(s) in the game, e.g. to abandon the game or whatever.
         Consider this. """
+
+        assert(self.is_table_thread())
 
         decision_type = args.get('decision_type', None)
         if decision_type is None or decision_type == 'none':
@@ -351,6 +422,12 @@ class BGATable:
                 self.game_inactive = True
 
     def table_notification(self, notification_type, data_dict, live):
+        """ A new asynchronous notification has arrived, or possibly
+        we are fetching stale notifications at startup.  This method
+        is called only in the table thread. """
+
+        assert(self.is_table_thread())
+
         self.last_message = time.time()
         args = data_dict.get('args', {})
         if notification_type == 'tableInfosChanged':
@@ -386,6 +463,8 @@ class BGATable:
             print("Unhandled table notification type %s: %s" % (notification_type, data_dict))
 
     def update_game_state(self, game_state, live):
+        assert(self.is_table_thread())
+
         self.game_state = game_state
         if live:
             self.consider_turn()
@@ -394,51 +473,58 @@ class BGATable:
         """ When a derived class determines the game has dropped into
         an invalid state, it should call this method.  This will
         propose a group abandon, which should shut down the game if we
-        were the only player left. """
+        were the only player left.  This may be called in either the
+        main thread or the table thread. """
 
-        status = self.table_infos['status']
-        if status == 'open' or not self.accepted_start:
-            # If the game is still open, we have to quit it rather
-            # than abandon it.
-            quit_url = 'https://boardgamearena.com/table/table/quitgame.html'
-            quit_params = {
-                's' : 'table_quitgame',
-                'table' : self.table_id,
-                }
-            #?table=229290475&neutralized=true&s=table_quitgame
+        with self.lock:
+            status = self.table_infos['status']
+            if status == 'open' or not self.accepted_start:
+                # If the game is still open, we have to quit it rather
+                # than abandon it.
+                quit_url = 'https://boardgamearena.com/table/table/quitgame.html'
+                quit_params = {
+                    's' : 'table_quitgame',
+                    'table' : self.table_id,
+                    }
+                #?table=229290475&neutralized=true&s=table_quitgame
 
-        else:
-            # If the game has already started, we have to abandon it.
-            quit_url = 'https://boardgamearena.com/table/table/decide.html'
-            quit_params = {
-                'src' : 'menu',
-                'type' : 'abandon',
-                'decision' : 1,
-                'table' : self.table_id,
-                }
+            else:
+                # If the game has already started, we have to abandon it.
+                quit_url = 'https://boardgamearena.com/table/table/decide.html'
+                quit_params = {
+                    'src' : 'menu',
+                    'type' : 'abandon',
+                    'decision' : 1,
+                    'table' : self.table_id,
+                    }
 
-        r = self.bga.session.get(quit_url, params = quit_params)
-        assert(r.status_code == 200)
-        print(r.url)
-        dict = json.loads(r.text)
-        if int(dict['status']):
-            # Successfully abandoned.
-            self.game_inactive = True
-        print(dict)
+            r = self.bga.session.get(quit_url, params = quit_params)
+            assert(r.status_code == 200)
+            print(r.url)
+            dict = json.loads(r.text)
+            if int(dict['status']):
+                # Successfully abandoned.
+                self.game_inactive = True
+            print(dict)
 
     def consider_turn(self):
         """ Called whenever the game changes state, this should look
         around and see if a turn needs to be played. """
 
+        assert(self.is_table_thread())
+
         if int(self.game_state.get('active_player', 0)) == int(self.bga.user_id):
             self.my_turn()
 
     def my_turn(self):
+        assert(self.is_table_thread())
         pass
 
     def poll(self):
-        """ Called by the parent class from time to time (e.g. once
+        """ Called in the table thread from time to time (e.g. once
         per second) to check if anything needs to be done lately. """
+
+        assert(self.is_table_thread())
 
         if self.accepted_start and self.gameserver == '0':
             # We've accepted the start but we haven't been told a

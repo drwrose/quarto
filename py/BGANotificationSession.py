@@ -6,7 +6,6 @@ import threading
 import time
 import ssl
 import traceback
-import queue
 
 class BGANotificationSession:
     """ Creates a connection to one of the BGA servers to listen for
@@ -17,16 +16,18 @@ class BGANotificationSession:
     You can create multiple BGANotificationSession objects.  Each one
     can connect to a single BGA server, and can subscribe to any
     number of channels on that server, by channel_name.  When a
-    notification comes in on any of the named channels, the specified
-    message_callback function is called in the main thread (or
-    whichever thread calls dispatch()).  The callback function is made
-    with the parameters message_callback(channel_name, message_data,
-    live), where message_data is whatever data is associated with the
-    notification, and live is True if the message originated "live"
-    from the server; this class always passes True for live.
-    Presumably another class may call the same callback method with
-    False for live, so the callback may differentiate.  Specifically,
-    BGATable does this when loading up past notifications at startup.
+    notification comes in on any of the named channels, it is added to
+    the indicated notification_queue with the specified
+    message_callback function, to be eventually called in the main
+    thread (by notification_queue.dispatch()).  The callback function
+    is made with the parameters message_callback(channel_name,
+    message_data, live), where message_data is whatever data is
+    associated with the notification, and live is True if the message
+    originated "live" from the server; this class always passes True
+    for live.  Presumably another class may call the same callback
+    method with False for live, so the callback may differentiate.
+    Specifically, BGATable does this when loading up past
+    notifications at startup.
 
     Call cleanup() to unsubscribe to all channels in this object, shut
     down the threads, and close the socket.  """
@@ -48,21 +49,20 @@ class BGANotificationSession:
     # about here.
     notification_msgid = 42
 
-    def __init__(self, bga, message_callback = None, socketio_url = None, socketio_path = None):
+    def __init__(self, bga, parent_name = None, notification_queue = None, message_callback = None, socketio_url = None, socketio_path = None):
         self.bga = bga
+
+        self.notification_queue = notification_queue
         self.message_callback = message_callback
         self.socketio_url = socketio_url
         self.socketio_path = socketio_path
         self.subscribe_url = '%s/%s/' % (self.socketio_url, self.socketio_path)
 
+        self.name = '%s %s' % (parent_name, self.subscribe_url)
+
         self.ws = None
         self.ws_thread = None
         self.ping_thread = None
-
-        # The ws_thread adds notifications to this queue; dispatch()
-        # (in the main thread) pulls them out.  This is how we pass
-        # notifications from ws_thread to the main thread.
-        self.notification_queue = queue.Queue()
 
         self.subscribed_channels = set()
 
@@ -199,19 +199,6 @@ class BGANotificationSession:
 
         return messages
 
-    def dispatch(self, block = False, timeout = None):
-        """ Processes any pending messages, and dispatches them
-        appropriately.  If block is True, this call will wait up till
-        timeout seconds for a message to come in (actually it can wait
-        a bit longer).  Should be called in the main thread. """
-
-        try:
-            while True:
-                channel, bgamsg_data = self.notification_queue.get(block = block, timeout = timeout)
-                self.message_callback(channel, bgamsg_data, True)
-        except queue.Empty:
-            return
-
     def __ws_message(self, ws, text):
         """ A new message has come in on the websocket.  This method
         is called in the ws thread (I think).  Decode the message and
@@ -266,15 +253,15 @@ class BGANotificationSession:
                 bgamsg_data = json.loads(message_data)
             else:
                 bgamsg_data = message_data
-            channel = bgamsg_data['channel']
-            self.bgamsg_notification_received(channel, bgamsg_data)
+            channel_name = bgamsg_data['channel']
+            self.bgamsg_notification_received(channel_name, bgamsg_data)
 
         elif message_type == 'join':
             # 'join' messages just include a channel name.  Do we need
             # to do anything else with this, or is this just a
             # notification?
-            channel = message_data
-            print("Join channel %s" % (channel))
+            channel_name = message_data
+            print("Join channel %s" % (channel_name))
 
         elif message_type == 'requestSpectators':
             # 'requestSpectators' messages include a table_id.  Again,
@@ -285,11 +272,9 @@ class BGANotificationSession:
         else:
             print("Unhandled message type %s from BGA: %s" % (message_type, message_data))
 
-    def bgamsg_notification_received(self, channel, bgamsg_data):
-        #print("thread notification on %s: %s" % (channel, data))
-        with self.bga.notification_cvar:
-            self.notification_queue.put((channel, bgamsg_data))
-            self.bga.notification_cvar.notify()
+    def bgamsg_notification_received(self, channel_name, message_data):
+        #print("thread notification on %s: %s" % (channel_name, data))
+        self.notification_queue.add_message(self.message_callback, channel_name, message_data)
 
     def __ws_error(self, ws, error):
         print("__ws_error(%s): %s" % (ws, error))
@@ -364,7 +349,8 @@ class BGANotificationSession:
                                          on_close = self.__ws_close)
 
 
-        self.ws_thread = threading.Thread(target = self.__ws_thread_main)
+        thread_name = 'Websocket thread %s' % (self.name)
+        self.ws_thread = threading.Thread(target = self.__ws_thread_main, name = thread_name)
         self.ws_thread.start()
 
     def stop_ws(self):
@@ -406,7 +392,8 @@ class BGANotificationSession:
             # No-op, already started.
             return
 
-        self.ping_thread = threading.Thread(target = self.__ping_thread_main)
+        thread_name = 'Ping thread %s' % (self.name)
+        self.ping_thread = threading.Thread(target = self.__ping_thread_main, name = thread_name)
         self.ping_thread.start()
 
     def __stop_ping(self):

@@ -6,7 +6,7 @@ import logging
 import threading
 import re
 import json
-from BGANotificationSession import BGANotificationSession
+from BGANotifications import BGANotifications
 from BGAQuarto import BGAQuarto
 
 from http.client import HTTPConnection
@@ -21,11 +21,13 @@ class BoardGameArena:
 
     def __init__(self):
 
-        # The list of all BGANotificationSession objects, and the cvar
-        # that is notified when a new notification comes in on one of
-        # them.
-        self.notifications = []
-        self.notification_cvar = threading.Condition()
+        # Record the current thread, or "main thread" of this application.
+        self.main_thread = threading.current_thread()
+
+        # This is the parent of the top-level notification channels,
+        # which listen for game invites and such.  Each BGATable also
+        # has its own set of notification channels.
+        self.notifications = BGANotifications(self, name = 'top')
 
         # The dictionary of all BGATable objects, indexed by table_id.
         self.tables = {}
@@ -36,7 +38,7 @@ class BoardGameArena:
 
         self.login()
 
-        notification = self.create_notification_session(message_callback = self.__message_callback)
+        notification = self.notifications.create_notification_session(message_callback = self.__message_callback)
 
         # Now we can subscribe to the basic channels.
         notification.subscribe_channels(
@@ -62,7 +64,11 @@ class BoardGameArena:
         """ Stops any threads and closes any sockets, in preparation
         for shutdown. """
 
-        self.cleanup_notification_sessions()
+        self.notifications.cleanup()
+
+        for table in self.tables.values():
+            table.cleanup()
+        self.tables = {}
 
     def login(self):
         """ Log in to Board Game Arena. """
@@ -138,44 +144,18 @@ class BoardGameArena:
                 print("Found table %s, %s" % (table_id, game_name))
                 self.update_table(table_id, game_name = game_name)
 
-    def create_notification_session(self, message_callback = None, socketio_url = 'https://r2.boardgamearena.net', socketio_path = 'r'):
-        """ Signs up for notifications of events from BGA. """
-        notification = BGANotificationSession(self, message_callback = message_callback, socketio_url = socketio_url, socketio_path = socketio_path)
-        self.notifications.append(notification)
-        return notification
-
-    def close_notification_session(self, notification):
-        self.notifications.remove(notification)
-        notification.cleanup()
-
-    def cleanup_notification_sessions(self):
-        """ Stops and removes all previously created notification
-        sessions. """
-
-        for notification in self.notifications:
-            notification.cleanup()
-        self.notifications = []
-
-
     def serve(self):
-        """ Does not return, just waits for stuff to happen. """
+        """ Does not return until explicitly stopped. """
+
         print("Serving.")
         try:
             while True:
                 # Check for recent messages.
-                with self.notification_cvar:
-                    self.notification_cvar.wait(1)
-                for notification in self.notifications:
-                    notification.dispatch()
+                self.notifications.dispatch(block = True, timeout = 1)
 
-                # Poll the active tables from time to time, in case a
-                # message got dropped.
-
-                # Save the dictionary contents in a list in case we
-                # modify the dictionary during this loop.
-                tables = list(self.tables.items())
-                for table_id, table in tables:
-                    table.poll()
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt, exiting.")
+            return
 
         finally:
             self.cleanup()
@@ -249,7 +229,7 @@ class BoardGameArena:
         if table_id in self.tables:
             # Already there, but maybe there's an update in status.
             table = self.tables[table_id]
-            table.fetch_table_infos()
+            table.table_infos_stale = True
             return table
 
         if game_name is None:
