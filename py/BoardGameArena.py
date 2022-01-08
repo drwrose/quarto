@@ -170,7 +170,11 @@ class BoardGameArena:
 
                 # Poll the active tables from time to time, in case a
                 # message got dropped.
-                for table_id, table in self.tables.items():
+
+                # Save the dictionary contents in a list in case we
+                # modify the dictionary during this loop.
+                tables = list(self.tables.items())
+                for table_id, table in tables:
                     table.poll()
 
         finally:
@@ -227,6 +231,16 @@ class BoardGameArena:
 
         self.update_table(table_id, game_name = game_name)
 
+    def num_active_tables(self):
+        """ Returns the number of tables we're currently involved in
+        (or about to be involved in). """
+
+        count = 0
+        for table in self.tables.values():
+            if not table.game_inactive:
+                count += 1
+        return count
+
     def update_table(self, table_id, game_name = None):
         """ Adds the table to self.tables if it wasn't already there;
         in any case, fetches the latest table_infos for the table.
@@ -242,9 +256,9 @@ class BoardGameArena:
             # Ignore this, we don't need to create a game we don't know.
             return None
 
-        if len(self.tables) > self.max_simultaneous_games:
+        if self.num_active_tables() > self.max_simultaneous_games:
             # Too busy, maybe later.
-            print("Already involved in %s games" % (len(self.tables)))
+            print("Already involved in %s games" % (self.num_active_tables()))
             self.refuse_invitation(table_id)
             return None
 

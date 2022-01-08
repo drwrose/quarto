@@ -1,6 +1,7 @@
 import re
 import json
 import ast
+import time
 
 from http.client import HTTPConnection
 #HTTPConnection.debuglevel = 1
@@ -8,6 +9,9 @@ from http.client import HTTPConnection
 class BGATable:
     """ Manages the connection to a specific "table" or game at
     BGA. """
+
+    # After three minutes, we'll remove inactive tables from the list.
+    inactive_table_timeout = 3 * 60
 
     def __init__(self, bga, table_id):
         print("Creating %s for %s" % (self.__class__.__name__, table_id))
@@ -18,6 +22,8 @@ class BGATable:
         self.game_name = None
         self.last_packet_id = 0
         self.game_state = {}
+        self.game_inactive = False
+        self.last_message = 0
 
         self.accepted_invite = False
         self.accepted_start = False
@@ -178,6 +184,8 @@ class BGATable:
     def update_table_infos(self):
         """ Called whenever self.table_infos has been updated. """
 
+        self.last_message = time.time()
+
         if [int(id) for id in self.table_infos['players']] == [int(self.bga.user_id)]:
             # If we're the only player in the game, abandon it.
             self.abandon_game()
@@ -204,9 +212,6 @@ class BGATable:
             print("setup")
             # In this case we must have accepted the invite previously.
             self.accepted_invite = True
-        elif status == 'finished':
-            print("Game is finished.")
-            self.bga.close_table(self)
         elif status == 'play':
             print("Game is actively playing.")
             # In this case we must have accepted the start previously.
@@ -214,8 +219,11 @@ class BGATable:
             self.accepted_start = True
         elif status == 'asyncinit':
             # We won't accept a "turn-based" game.
-            print("Don't want to play aync game")
+            print("Don't want to play async game")
             self.abandon_game()
+        elif status == 'finished':
+            print("Game is finished.")
+            self.game_inactive = True
         else:
             print("Unhandled game status %s" % (status))
 
@@ -335,9 +343,15 @@ class BGATable:
             assert(r.status_code == 200)
             #print(r.url)
             dict = json.loads(r.text)
-            assert(dict['status'])
+            if not int(dict['status']):
+                print("Unexpected result from %s" % (r.url))
+                print(dict)
+
+            if decision_type == 'abandon':
+                self.game_inactive = True
 
     def table_notification(self, notification_type, data_dict, live):
+        self.last_message = time.time()
         args = data_dict.get('args', {})
         if notification_type == 'tableInfosChanged':
             print("tableInfosChanged")
@@ -407,6 +421,9 @@ class BGATable:
         assert(r.status_code == 200)
         print(r.url)
         dict = json.loads(r.text)
+        if int(dict['status']):
+            # Successfully abandoned.
+            self.game_inactive = True
         print(dict)
 
     def consider_turn(self):
@@ -428,3 +445,11 @@ class BGATable:
             # gameserver yet.  Keep checking for the gameserver, it
             # should be coming in soon.
             self.fetch_table_infos()
+
+        if self.game_inactive:
+            # After our table has gone inactive (e.g. finished) for a
+            # certain amount of time, remove it from the parent's list
+            # of tables.
+            elapsed = time.time() - self.last_message
+            if elapsed > self.inactive_table_timeout:
+                self.bga.close_table(self)
