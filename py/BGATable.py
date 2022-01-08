@@ -252,10 +252,13 @@ class BGATable:
             table_status = me_info and me_info['table_status']
             if table_status == 'setup':
                 # We're not in the game yet.
-                #self.accept_invite()
                 pass
             elif table_status == 'expected':
                 print("expected")
+                # Let's wait just a moment before accepting the
+                # invite, to help avoid a BGA race condition on the
+                # remote BGA clients.
+                time.sleep(1)
                 self.accept_invite()
             elif table_status == 'play':
                 print("table_status is play")
