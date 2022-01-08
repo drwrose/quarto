@@ -251,8 +251,9 @@ class BGATable:
             me_info = self.table_infos['players'].get(str(self.bga.user_id), None)
             table_status = me_info and me_info['table_status']
             if table_status == 'setup':
-                # We're not in the game yet, join it.
-                self.accept_invite()
+                # We're not in the game yet.
+                #self.accept_invite()
+                pass
             elif table_status == 'expected':
                 print("expected")
                 self.accept_invite()
@@ -293,7 +294,13 @@ class BGATable:
 
         r = self.bga.session.get(join_url, params = join_params)
         assert(r.status_code == 200)
-        print(r.text)
+        dict = json.loads(r.text)
+        if int(dict['status']):
+            print("Accepted invite")
+        else:
+            print("Unexpected result from %s" % (r.url))
+            print(dict)
+
         self.accepted_invite = True
 
     def accept_start(self):
@@ -309,7 +316,13 @@ class BGATable:
 
         r = self.bga.session.get(accept_url, params = accept_params)
         assert(r.status_code == 200)
-        print(r.text)
+        dict = json.loads(r.text)
+        if int(dict['status']):
+            print("Accepted start")
+        else:
+            print("Unexpected result from %s" % (r.url))
+            print(dict)
+
         self.accepted_invite = True
         self.accepted_start = True
 
@@ -348,7 +361,7 @@ class BGATable:
                     notification_type = data_dict['type']
                     self.table_notification(notification_type, data_dict, live)
             else:
-                print("Ignoring out-of-sequence notification %s" % (notification_type))
+                print("Ignoring out-of-sequence notification %s: " % (packet_id, data))
         else:
             print("Unhandled gs notification on %s: %s" % (channel, data))
 
@@ -382,7 +395,10 @@ class BGATable:
             return
 
         decision_taken = args.get('decision_taken', None)
-        my_decision = str(args.get('players', {}).get(str(self.bga.user_id), ''))
+
+        players = args.get('players', None) or {}
+        my_decision = players.get(str(self.bga.user_id), None) or ''
+
         print("consider_table_decision: %s, decision taken: %s, my_decision: %s" % (decision_type, decision_taken, my_decision))
         print(args)
 
@@ -412,7 +428,6 @@ class BGATable:
 
             r = self.bga.session.get(decide_url, params = decide_params)
             assert(r.status_code == 200)
-            #print(r.url)
             dict = json.loads(r.text)
             if not int(dict['status']):
                 print("Unexpected result from %s" % (r.url))
@@ -538,4 +553,4 @@ class BGATable:
             # of tables.
             elapsed = time.time() - self.last_message
             if elapsed > self.inactive_table_timeout:
-                self.bga.close_table(self)
+                self.bga.close_table(self.table_id)

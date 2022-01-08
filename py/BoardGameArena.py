@@ -6,6 +6,7 @@ import logging
 import threading
 import re
 import json
+import queue
 from BGANotifications import BGANotifications
 from BGAQuarto import BGAQuarto
 
@@ -31,6 +32,9 @@ class BoardGameArena:
 
         # The dictionary of all BGATable objects, indexed by table_id.
         self.tables = {}
+
+        # A temporary holding place for closed tables.
+        self.closed_tables = queue.Queue()
 
         # Create the web session, which stores all of the login
         # cookies and whatnot.
@@ -66,9 +70,33 @@ class BoardGameArena:
 
         self.notifications.cleanup()
 
-        for table in self.tables.values():
-            table.cleanup()
-        self.tables = {}
+        # Since a table might remove itself from this list at any
+        # time, we go through some effort to be thread-safe here.
+        table_ids = list(self.tables.keys())
+        while table_ids:
+            for table_id in table_ids:
+                self.close_table(table_id)
+
+            # Probably there won't have been any new tables added to
+            # the list while we did that, since these are only added
+            # in the main thread I think; but what the heck, we
+            # double-check.
+            table_ids = list(self.tables.keys())
+
+        # Now all tables have been moved to the closed_tables queue,
+        # clean them up properly.
+        self.cleanup_closed_tables()
+
+    def cleanup_closed_tables(self):
+        """ Called in the main thread to finally cleanup tables that
+        were recently moved to self.closed_tables(). """
+
+        try:
+            while True:
+                table = self.closed_tables.get(block = False)
+                table.cleanup()
+        except queue.Empty:
+            pass
 
     def login(self):
         """ Log in to Board Game Arena. """
@@ -152,6 +180,7 @@ class BoardGameArena:
             while True:
                 # Check for recent messages.
                 self.notifications.dispatch(block = True, timeout = 1)
+                self.cleanup_closed_tables()
 
         except KeyboardInterrupt:
             print("KeyboardInterrupt, exiting.")
@@ -269,8 +298,13 @@ class BoardGameArena:
         assert(r.status_code == 200)
         print(r.text)
 
-    def close_table(self, table):
-        table_object = self.tables.get(table.table_id, None)
-        if table_object is table:
-            del self.tables[table.table_id]
-        table.cleanup()
+    def close_table(self, table_id):
+        # Moves the table to the closed_table list for future cleanup.
+        # This may be called in the table's own table_thread, or in
+        # the main thread at cleanup time.
+
+        table = self.tables.get(table_id, None)
+        if table:
+            assert(table.table_id == table_id)
+            del self.tables[table_id]
+            self.closed_tables.put(table)
