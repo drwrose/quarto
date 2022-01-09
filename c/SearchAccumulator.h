@@ -49,15 +49,8 @@ public:
   int accidental_win_count() const {
     return _accidental_win_count;
   }
-  int win_score() const {
-    return 2 * _win_count + _accidental_win_count;
-  }
   int lose_count() const {
     return _lose_count;
-  }
-  double win_ratio() const {
-    assert(_lose_count != 0);
-    return (double)win_score() / (double)lose_count();
   }
   int tie_count() const {
     return _tie_count;

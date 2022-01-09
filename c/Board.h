@@ -67,6 +67,8 @@ public:
 
   bool is_win() const { return _win != 0; }
   BoardMask get_win() const { return _win; }
+  int count_near_wins() const;
+
   bool is_game_over() const;
   BoardMask get_occupied() const { return _occupied; }
   int get_num_used_pieces() const { return _num_used_pieces; }
@@ -81,7 +83,6 @@ private:
   void calc_win();
   void calc_row_win(int a, int b, int c, int d);
 
-  int count_near_wins() const;
   int count_row_near_wins(int a, int b, int c, int d) const;
   int count_row_near_win(int a, int b, int c) const;
 

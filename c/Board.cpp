@@ -105,6 +105,40 @@ get_winning_player_index() const {
   return get_current_give_player_index();
 }
 
+// Returns the number of rows (or squares) that are "near wins",
+// e.g. three matching pieces in the same row, with an empty square.
+int Board::
+count_near_wins() const {
+  int near_wins = 0;
+
+  near_wins += count_row_near_wins(0, 1, 2, 3);
+  near_wins += count_row_near_wins(4, 5, 6, 7);
+  near_wins += count_row_near_wins(8, 9, 10, 11);
+  near_wins += count_row_near_wins(12, 13, 14, 15);
+  near_wins += count_row_near_wins(0, 4, 8, 12);
+  near_wins += count_row_near_wins(1, 5, 9, 13);
+  near_wins += count_row_near_wins(2, 6, 10, 14);
+  near_wins += count_row_near_wins(3, 7, 11, 15);
+  near_wins += count_row_near_wins(0, 5, 10, 15);
+  near_wins += count_row_near_wins(3, 6, 9, 12);
+
+  if (_advanced) {
+    // If the advanced rules are in effect, check also for winning
+    // 2x2 squares.
+    near_wins += count_row_near_wins(0, 1, 4, 5);
+    near_wins += count_row_near_wins(1, 2, 5, 6);
+    near_wins += count_row_near_wins(2, 3, 6, 7);
+    near_wins += count_row_near_wins(4, 5, 8, 9);
+    near_wins += count_row_near_wins(5, 6, 9, 10);
+    near_wins += count_row_near_wins(6, 7, 10, 11);
+    near_wins += count_row_near_wins(8, 9, 12, 13);
+    near_wins += count_row_near_wins(9, 10, 13, 14);
+    near_wins += count_row_near_wins(10, 11, 14, 15);
+  }
+
+  return near_wins;
+}
+
 // Returns true if this board position marks the end of the game, or
 // false if another play may be made.
 bool Board::
@@ -136,6 +170,7 @@ choose_piece(SearchResult &best_result, int me_player_index, bool show_log) cons
     SearchResult next_result;
     next_result.set_aux_piece(give_piece);
     search_wins(next_result, me_player_index, max_me_levels, max_search_levels, give_piece);
+    next_result.compute_win_score();
     result_list.push_back(next_result);
   }
 
@@ -198,7 +233,7 @@ choose_square_and_piece(unsigned int &chosen_si, Piece &chosen_piece, int me_pla
     SearchResult next_result;
     next_result.set_aux_si(si);
     next_board->search_wins(next_result, me_player_index, max_me_levels - 1, max_search_levels - 1, true);
-    next_result.set_near_win_count(next_board->count_near_wins());
+    next_result.compute_win_score(*next_board);
     result_list.push_back(next_result);
   }
 
@@ -310,40 +345,6 @@ calc_row_win(int a, int b, int c, int d) {
   }
 
   // None of the attribs match.
-}
-
-// Returns the number of rows (or squares) that are "near wins",
-// e.g. three matching pieces in the same row, with an empty square.
-int Board::
-count_near_wins() const {
-  int near_wins = 0;
-
-  near_wins += count_row_near_wins(0, 1, 2, 3);
-  near_wins += count_row_near_wins(4, 5, 6, 7);
-  near_wins += count_row_near_wins(8, 9, 10, 11);
-  near_wins += count_row_near_wins(12, 13, 14, 15);
-  near_wins += count_row_near_wins(0, 4, 8, 12);
-  near_wins += count_row_near_wins(1, 5, 9, 13);
-  near_wins += count_row_near_wins(2, 6, 10, 14);
-  near_wins += count_row_near_wins(3, 7, 11, 15);
-  near_wins += count_row_near_wins(0, 5, 10, 15);
-  near_wins += count_row_near_wins(3, 6, 9, 12);
-
-  if (_advanced) {
-    // If the advanced rules are in effect, check also for winning
-    // 2x2 squares.
-    near_wins += count_row_near_wins(0, 1, 4, 5);
-    near_wins += count_row_near_wins(1, 2, 5, 6);
-    near_wins += count_row_near_wins(2, 3, 6, 7);
-    near_wins += count_row_near_wins(4, 5, 8, 9);
-    near_wins += count_row_near_wins(5, 6, 9, 10);
-    near_wins += count_row_near_wins(6, 7, 10, 11);
-    near_wins += count_row_near_wins(8, 9, 12, 13);
-    near_wins += count_row_near_wins(9, 10, 13, 14);
-    near_wins += count_row_near_wins(10, 11, 14, 15);
-  }
-
-  return near_wins;
 }
 
 // Returns 1 if this row is a near win, 0 if it is not.
