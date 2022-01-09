@@ -28,7 +28,7 @@ class BoardGameArena:
         # This is the parent of the top-level notification channels,
         # which listen for game invites and such.  Each BGATable also
         # has its own set of notification channels.
-        self.notifications = BGANotifications(self, name = 'top')
+        self.notifications = BGANotifications(self, name = 'top', auto_restart = True)
 
         # The dictionary of all BGATable objects, indexed by table_id.
         self.tables = {}

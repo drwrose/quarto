@@ -359,11 +359,14 @@ class BGANotificationSession:
     def __ws_thread_main(self):
         # Most of the work is done in __ws_thread_one_pass(), which
         # connects and listens until the socket is disconnected.
+
+        #print ("Opening %s:%s, restart = %s" % (self.sid, self.subscribe_url, self.auto_restart))
         self.__ws_thread_one_pass()
 
         # As long as self.auto_restart is True, we will automatically
         # reconnect and continue to listen.
         while self.auto_restart:
+            print ("Restarting %s:%s" % (self.sid, self.subscribe_url))
             self.__ws_thread_one_pass()
 
     def __ws_thread_one_pass(self):
