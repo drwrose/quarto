@@ -23,7 +23,7 @@ public:
     return SearchAccumulator::win_score() + _near_win_count * near_win_value;
   }
   double win_ratio() const {
-    assert(_lose_count != 0);
+    assert(lose_count() != 0);
     return (double)win_score() / (double)lose_count();
   }
 
