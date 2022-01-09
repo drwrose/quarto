@@ -115,7 +115,15 @@ class BGAQuarto(BGATable):
         assert(r.status_code == 200)
         #print(r.url)
         dict = json.loads(r.text)
+        try:
+            dict = json.loads(r.text)
+        except json.decoder.JSONDecodeError:
+            print(r.url)
+            print("Server response wasn't JSON: %s" (r.text))
+            return
+
         if not dict['status']:
+            print(r.url)
             print("Game server didn't allow move: %s" % (dict,))
             self.abandon_game()
 
@@ -153,8 +161,15 @@ class BGAQuarto(BGATable):
 
         assert(r.status_code == 200)
         #print(r.url)
-        dict = json.loads(r.text)
+        try:
+            dict = json.loads(r.text)
+        except json.decoder.JSONDecodeError:
+            print(r.url)
+            print("Server response wasn't JSON: %s" (r.text))
+            return
+
         if not dict['status']:
+            print(r.url)
             print("Game server didn't allow move: %s" % (dict,))
             self.abandon_game()
 
