@@ -20,7 +20,6 @@ class BGATable:
         self.bga = bga
         self.table_id = table_id
         self.table_infos = None
-        self.table_infos_stale = True
         self.gameserver = None
         self.game_name = None
         self.last_packet_id = 0
@@ -214,7 +213,6 @@ class BGATable:
         assert(self.is_table_thread())
 
         self.table_infos = table_infos
-        self.table_infos_stale = False
         self.gameserver = self.table_infos['gameserver']
         self.game_name = self.table_infos['game_name']
 
@@ -364,7 +362,7 @@ class BGATable:
                     notification_type = data_dict['type']
                     self.table_notification(notification_type, data_dict, live)
             else:
-                print("Ignoring out-of-sequence notification %s: " % (packet_id, data))
+                print("Ignoring out-of-sequence notification %s: %s" % (packet_id, data))
         else:
             print("Unhandled gs notification on %s: %s" % (channel, data))
 
@@ -403,9 +401,9 @@ class BGATable:
         my_decision = players.get(str(self.bga.user_id), None) or ''
 
         print("consider_table_decision: %s, decision taken: %s, my_decision: %s" % (decision_type, decision_taken, my_decision))
-        print(args)
+        #print(args)
 
-        if my_decision and my_decision != 'undecided':
+        if decision_taken or (my_decision and my_decision != 'undecided'):
             # We've previously cast our decision on this question.
             return
 

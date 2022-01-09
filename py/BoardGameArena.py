@@ -170,7 +170,7 @@ class BoardGameArena:
             for table_id, args in table_ids.items():
                 game_name = args.get('game_name', None)
                 print("Found table %s, %s" % (table_id, game_name))
-                self.update_table(table_id, game_name = game_name)
+                self.add_table(table_id, game_name = game_name)
 
     def serve(self):
         """ Does not return until explicitly stopped. """
@@ -216,7 +216,7 @@ class BoardGameArena:
             elif notification_type == 'shouldAcceptGameStart':
                 table_id = args['table_id']
                 print("shouldAcceptGameStart for %s" % (table_id))
-                table = self.update_table(table_id)
+                table = self.add_table(table_id)
                 if table:
                     table.accept_start()
 
@@ -238,7 +238,7 @@ class BoardGameArena:
         table_id = args.get('table_id', None)
         print("update_player_table_status: %s, %s at table %s" % (status, game_name, table_id))
 
-        self.update_table(table_id, game_name = game_name)
+        self.add_table(table_id, game_name = game_name)
 
     def num_active_tables(self):
         """ Returns the number of tables we're currently involved in
@@ -250,16 +250,14 @@ class BoardGameArena:
                 count += 1
         return count
 
-    def update_table(self, table_id, game_name = None):
+    def add_table(self, table_id, game_name = None):
         """ Adds the table to self.tables if it wasn't already there;
         in any case, fetches the latest table_infos for the table.
         Returns the table, or None if the table isn't valid. """
 
         if table_id in self.tables:
-            # Already there, but maybe there's an update in status.
-            table = self.tables[table_id]
-            table.table_infos_stale = True
-            return table
+            # Already there.
+            return self.tables[table_id]
 
         if game_name is None:
             # Ignore this, we don't need to create a game we don't know.
