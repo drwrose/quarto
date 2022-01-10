@@ -49,6 +49,10 @@ class BGANotificationSession:
     # about here.
     notification_msgid = 42
 
+    # The number of seconds we wait between auto_restarts when a
+    # connection attempt fails.
+    restart_wait_seconds = 30
+
     def __init__(self, bga, parent_name = None, notification_queue = None, message_callback = None, socketio_url = None, socketio_path = None, auto_restart = False):
         # If auto_restart is True, the websocket will reconnect itself
         # if it gets dropped by the server.
@@ -154,7 +158,8 @@ class BGANotificationSession:
 
     def parse_messages(self, text):
         """ Returns a list of (id, json) tuples, extracted from the
-        notification response. """
+        notification response.  If the response isn't of the
+        expected form, returns None.  """
 
         # We expect a set of messages in the form of repeated strings
         # of 99:99[json], where the first 99 is the character length
@@ -168,8 +173,11 @@ class BGANotificationSession:
             # Pull out the next message.
             m = pattern.match(text, p)
             if m is None:
-                message = 'Unexpected response from BGA at position %s: %s' % (p, text)
-                raise RuntimeError(message)
+                # The response doesn't include the expected form.
+                # Probably the realtime server is temporarily down.
+                print('Unexpected response from BGA at position %s')
+                print(text)
+                return None
 
             length, id = m.groups()
             length = int(length)
@@ -362,7 +370,9 @@ class BGANotificationSession:
         # As long as self.auto_restart is True, we will automatically
         # reconnect and continue to listen.
         while self.auto_restart:
-            print ("Restarting %s:%s" % (self.sid, self.subscribe_url))
+            print("Waiting %s seconds to try again." % (self.restart_wait_seconds))
+            time.sleep(self.restart_wait_seconds)
+            print ("Retrying %s" % (self.subscribe_url))
             self.__ws_thread_one_pass()
 
     def __ws_thread_one_pass(self):
@@ -383,9 +393,19 @@ class BGANotificationSession:
                 'transport' : 'polling',
                 }
 
-            r = self.bga.session.get(self.subscribe_url, params = subscribe_params)
+            try:
+                r = self.bga.session.get(self.subscribe_url, params = subscribe_params)
+            except requests.ConnectionError:
+                print("Unable to connect to %s" % (self.subscribe_url))
+                return
+
             #print(r.url)
             messages = dict(self.parse_messages(r.text))
+            if messages is None:
+                # That didn't work, probably the realtime server was
+                # down.
+                return
+
             #print(messages)
 
             comm_protocol = messages[0]

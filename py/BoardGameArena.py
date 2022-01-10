@@ -7,6 +7,7 @@ import threading
 import re
 import json
 import queue
+import sys
 from BGANotifications import BGANotifications
 from BGAQuarto import BGAQuarto
 
@@ -119,7 +120,12 @@ class BoardGameArena:
         # We start by getting the login form, which we need to extract
         # the csrf_token.
         form_url = 'https://en.boardgamearena.com/account'
-        r = self.session.get(form_url)
+        try:
+            r = self.session.get(form_url)
+        except requests.ConnectionError:
+            print("Unable to connect to %s" % (form_url))
+            sys.exit(1)
+
         soup = BeautifulSoup(r.text, 'html.parser')
         csrf_token = soup.find(id='csrf_token')['value']
 
