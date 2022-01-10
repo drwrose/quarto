@@ -15,13 +15,6 @@ class BGATable:
     # After three minutes, we'll remove inactive tables from the list.
     inactive_table_timeout = 3 * 60
 
-    # The minimum amount of time, in seconds, we should wait between
-    # receiving a turn notification or invite notification from BGA,
-    # and sending a response.  If we respond more quickly than this,
-    # perhaps the remote BGA client could miss the response (there do
-    # appear to be some race conditions in BGA).
-    min_response_time_seconds = 1
-
     def __init__(self, bga, table_id):
         print("Creating %s for %s" % (self.__class__.__name__, table_id))
         assert(isinstance(table_id, int))
@@ -264,10 +257,6 @@ class BGATable:
                 pass
             elif table_status == 'expected':
                 print("expected")
-                # Let's wait just a moment before accepting the
-                # invite, to help avoid a BGA race condition on the
-                # remote BGA clients.
-                time.sleep(self.min_response_time_seconds)
                 self.accept_invite()
             elif table_status == 'play':
                 print("table_status is play")
@@ -298,6 +287,11 @@ class BGATable:
         """ Called in the table thread. """
 
         assert(self.is_table_thread())
+
+        # Let's wait just a moment before accepting the
+        # invite, to help avoid a BGA race condition on the
+        # remote BGA clients.
+        time.sleep(self.bga.min_response_time_seconds)
 
         join_url = 'https://boardgamearena.com/table/table/joingame.html'
         join_params = {
@@ -561,8 +555,8 @@ class BGATable:
         the remote BGA client. """
 
         elapsed = time.time() - self.my_turn_notification
-        if elapsed < self.min_response_time_seconds:
-            delay = self.min_response_time_seconds - elapsed
+        if elapsed < self.bga.min_response_time_seconds:
+            delay = self.bga.min_response_time_seconds - elapsed
             print("Waiting %s seconds to send response" % (delay))
             time.sleep(delay)
 

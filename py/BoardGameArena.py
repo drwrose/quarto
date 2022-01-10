@@ -25,6 +25,13 @@ class BoardGameArena:
     max_retry_count = 5
     retry_wait_seconds = 5
 
+    # The minimum amount of time, in seconds, we should wait between
+    # receiving a turn notification or invite notification from BGA,
+    # and sending a response.  If we respond more quickly than this,
+    # perhaps the remote BGA client could miss the response (there do
+    # appear to be some race conditions in BGA).
+    min_response_time_seconds = 1
+
     def __init__(self):
 
         # Record the current thread, or "main thread" of this application.
@@ -389,15 +396,24 @@ class BoardGameArena:
         """ Tells the player no thank you, when we're invited to a
         game we can't play. """
 
+        # Let's wait just a moment before refusing the invite, to help
+        # avoid a BGA race condition on the remote BGA clients.
+        time.sleep(self.min_response_time_seconds)
+
         refuse_url = 'https://boardgamearena.com/table/table/refuseInvitation.html'
         refuse_params = {
             'table' : table_id,
             }
 
-        r = self.retry_get(refuse_url, params = refuse_params)
-        if r:
-            assert(r.status_code == 200)
-            print(r.text)
+        dict = self.retry_get_json(refuse_url, params = refuse_params)
+        if dict is None:
+            return
+
+        if int(dict['status']):
+            print("Refused table")
+        else:
+            print("Unexpected result from %s" % (refuse_url))
+            print(dict)
 
     def close_table(self, table_id):
         # Moves the table to the closed_table list for future cleanup.
