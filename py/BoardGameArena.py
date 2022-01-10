@@ -168,6 +168,7 @@ class BoardGameArena:
             print("No existing tables.")
         else:
             for table_id, args in table_ids.items():
+                table_id = int(table_id)
                 game_name = args.get('game_name', None)
                 print("Found table %s, %s" % (table_id, game_name))
                 self.add_table(table_id, game_name = game_name)
@@ -210,18 +211,18 @@ class BoardGameArena:
                 print("groupUpdate for %s" % (group_id))
 
             elif notification_type == 'matchmakingGameStart':
-                table_id = args['table_id']
+                table_id = int(args['table_id'])
                 print("matchmakingGameStart for %s" % (table_id))
 
             elif notification_type == 'shouldAcceptGameStart':
-                table_id = args['table_id']
+                table_id = int(args['table_id'])
                 print("shouldAcceptGameStart for %s" % (table_id))
                 table = self.add_table(table_id)
                 if table:
                     table.accept_start()
 
             elif notification_type == 'proposeRematch':
-                table_id = args['table_id']
+                table_id = int(args['table_id'])
                 print("proposeRematch for %s" % (table_id))
 
             elif notification_type == 'updatePlayerNotifCount':
@@ -235,7 +236,7 @@ class BoardGameArena:
     def update_player_table_status(self, args):
         status = args['status']
         game_name = args.get('game_name', None)
-        table_id = args.get('table_id', None)
+        table_id = int(args.get('table_id', 0))
         print("update_player_table_status: %s, %s at table %s" % (status, game_name, table_id))
 
         self.add_table(table_id, game_name = game_name)
@@ -301,6 +302,7 @@ class BoardGameArena:
         # This may be called in the table's own table_thread, or in
         # the main thread at cleanup time.
 
+        print("close_table(%s)" % (table_id))
         table = self.tables.get(table_id, None)
         if table:
             assert(table.table_id == table_id)
