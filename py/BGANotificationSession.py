@@ -108,6 +108,10 @@ class BGANotificationSession:
                     self.subscribed_channels.add(channel_name)
                 return
 
+            # It's possible that we've just lost the websocket
+            # connection, and self.sid is no longer valid, but the
+            # thread hasn't cleared self.sid to None yet.  In that
+            # case the below operation will fail.
             subscribe_params = {
                 'user' : self.bga.user_id,
                 'name' : self.bga.user_name,
@@ -129,6 +133,15 @@ class BGANotificationSession:
                 message = "Unable to subscribe to topics: %s" % (r.url)
                 print(r.url)
                 print(r.text)
+
+                # As described above, perhaps we only failed because
+                # we happened to get called at the wrong time, just
+                # when the socket is being reset.  We could perhaps
+                # protect against this case by not raising an
+                # exception in the case of self.auto_restart being
+                # true, assuming that when the socket restarts, the
+                # subscribe request will succeed.  Not sure whether
+                # that's a good idea or not.
                 raise RuntimeError(message)
 
             for channel_name in channels:
@@ -393,12 +406,7 @@ class BGANotificationSession:
                 'transport' : 'polling',
                 }
 
-            try:
-                r = self.bga.session.get(self.subscribe_url, params = subscribe_params)
-            except requests.ConnectionError:
-                print("Unable to connect to %s" % (self.subscribe_url))
-                return
-
+            r = self.bga.retry_get(self.subscribe_url, params = subscribe_params)
             #print(r.url)
             messages = dict(self.parse_messages(r.text))
             if messages is None:
@@ -457,6 +465,11 @@ class BGANotificationSession:
         if ws:
             ws.run_forever(sslopt = {"cert_reqs" : ssl.CERT_NONE})
 
+        # There is a tiny race condition here: after the socket closes
+        # (or even before we've detected that it's closing), and
+        # before we set self.sid to None, some other thread might call
+        # subscribe_channels() with the now-invalid self.sid, and that
+        # will fail.  See subscribe_channels().
         sid = self.sid
         self.sid = None
         self.ws = None

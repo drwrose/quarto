@@ -1,6 +1,7 @@
 from BGATable import BGATable
 import random
 import json
+import requests
 from import_pyquarto import Piece, Quarto, Board, Player
 
 class BGAQuarto(BGATable):
@@ -100,30 +101,18 @@ class BGAQuarto(BGATable):
 
         print("Robot %s chose piece %s, %s" % (me.get_name(), piece.get_desc(), piece_number))
 
+        self.delay_my_turn_response()
         select_url = 'https://boardgamearena.com/%s/%s/%s/selectPiece.html' % (self.gameserver, self.game_name, self.game_name)
         select_params = {
             'number' : piece_number,
             'table' : self.table_id,
             }
 
-        try:
-            r = self.bga.session.get(select_url, params = select_params)
-        except ConnectionError:
-            message = "Connection error on %s" % (select_url)
-            raise RuntimeError(message)
-
-        assert(r.status_code == 200)
-        #print(r.url)
-        dict = json.loads(r.text)
-        try:
-            dict = json.loads(r.text)
-        except json.decoder.JSONDecodeError:
-            print(r.url)
-            print("Server response wasn't JSON: %s" % (r.text))
+        dict = self.bga.retry_get_json(select_url, params = select_params)
+        if dict is None:
             return
 
         if not dict['status']:
-            print(r.url)
             print("Game server didn't allow move: %s" % (dict,))
             self.abandon_game()
 
@@ -146,6 +135,7 @@ class BGAQuarto(BGATable):
 
         print("Robot %s chose square %s: %s, %s" % (me.get_name(), si, ci + 1, ri + 1))
 
+        self.delay_my_turn_response()
         select_url = 'https://boardgamearena.com/%s/%s/%s/placePiece.html' % (self.gameserver, self.game_name, self.game_name)
         select_params = {
             'x' : ci + 1,
@@ -153,23 +143,11 @@ class BGAQuarto(BGATable):
             'table' : self.table_id,
             }
 
-        try:
-            r = self.bga.session.get(select_url, params = select_params)
-        except ConnectionError:
-            message = "Connection error on %s" % (select_url)
-            raise RuntimeError(message)
-
-        assert(r.status_code == 200)
-        #print(r.url)
-        try:
-            dict = json.loads(r.text)
-        except json.decoder.JSONDecodeError:
-            print(r.url)
-            print("Server response wasn't JSON: %s" % (r.text))
+        dict = self.bga.retry_get_json(select_url, params = select_params)
+        if dict is None:
             return
 
         if not dict['status']:
-            print(r.url)
             print("Game server didn't allow move: %s" % (dict,))
             self.abandon_game()
 

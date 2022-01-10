@@ -21,6 +21,10 @@ class BoardGameArena:
     # Don't try to play more than this number of games at once.
     max_simultaneous_games = 2
 
+    # Support for retry_get().
+    max_retry_count = 5
+    retry_wait_seconds = 5
+
     def __init__(self):
 
         # Record the current thread, or "main thread" of this application.
@@ -64,6 +68,93 @@ class BoardGameArena:
             )
 
         self.fetch_table_history()
+
+    def try_post(self, url, params = None, data = None):
+        """ Performs self.session.post(), once, with failure detection.
+        Returns either a successful requests.Response, or None if we
+        didn't get a successful response. """
+
+        try:
+            r = self.session.post(url, params = params, data = data)
+            if not r.ok:
+                print("Got response %s on %s" % (r.status_code))
+                return None
+        except requests.ConnectionError:
+            print("Connection error on %s" % (url))
+            return None
+
+        return r
+
+    def try_post_json(self, url, params = None, data = None):
+        """ Like retry_post(), but automatically decodes the response
+        as a JSON object.  Returns the decoded result, or None if
+        there was an error. """
+
+        r = self.try_post(url, params = params, data = data)
+        if r is None:
+            return None
+
+        assert(r.status_code == 200)
+        try:
+            result = json.loads(r.text)
+        except json.decoder.JSONDecodeError:
+            print(r.url)
+            print("Server response wasn't JSON: %s" % (r.text))
+            return None
+
+        return result
+
+    def try_get(self, url, params = None):
+        """ Performs self.session.get(), once, with failure detection.
+        Returns either a successful requests.Response, or None if we
+        didn't get a successful response. """
+
+        try:
+            r = self.session.get(url, params = params)
+            if not r.ok:
+                print("Got response %s on %s" % (r.status_code))
+                return None
+        except requests.ConnectionError:
+            print("Connection error on %s" % (url))
+            return None
+
+        return r
+
+    def retry_get(self, url, params = None):
+        """ Performs self.session.get() with auto-retry in case it
+        fails the first attempt or two.  Returns either a successful
+        requests.Response, or None if we never got a successful
+        response. """
+
+        r = self.try_get(url, params = params)
+
+        try_count = 1
+        while r is None and try_count < self.max_retry_count:
+            print("Waiting for %s seconds to try again" % (self.retry_wait_seconds))
+            time.sleep(self.retry_wait_seconds)
+            r = self.try_get(url, params = params)
+            try_count += 1
+
+        return r
+
+    def retry_get_json(self, url, params = None):
+        """ Like retry_get(), but automatically decodes the response
+        as a JSON object.  Returns the decoded result, or None if
+        there was an error. """
+
+        r = self.retry_get(url, params = params)
+        if r is None:
+            return None
+
+        assert(r.status_code == 200)
+        try:
+            result = json.loads(r.text)
+        except json.decoder.JSONDecodeError:
+            print(r.url)
+            print("Server response wasn't JSON: %s" % (r.text))
+            return None
+
+        return result
 
     def cleanup(self):
         """ Stops any threads and closes any sockets, in preparation
@@ -120,9 +211,8 @@ class BoardGameArena:
         # We start by getting the login form, which we need to extract
         # the csrf_token.
         form_url = 'https://en.boardgamearena.com/account'
-        try:
-            r = self.session.get(form_url)
-        except requests.ConnectionError:
+        r = self.retry_get(form_url)
+        if r is None:
             print("Unable to connect to %s" % (form_url))
             sys.exit(1)
 
@@ -137,15 +227,18 @@ class BoardGameArena:
             #'rememberme' : 'on',
             'csrf_token' : csrf_token,
             }
-        r = self.session.post(login_url, data = login_data)
-        json = r.json()
-        if not int(json['status']) or not json['data']['success']:
+        dict = self.try_post_json(login_url, data = login_data)
+        if dict is None:
+            message = 'Unable to log into Board Game Arena.'
+            raise RuntimeError(message)
+
+        if not int(dict['status']) or not dict['data']['success']:
             message = 'Unable to log into Board Game Arena: %s' % (json.get('error'))
             raise RuntimeError(message)
 
-        infos = json['data']['infos']
+        infos = dict['data']['infos']
         self.user_name = infos['name']
-        self.user_id = infos['id']
+        self.user_id = int(infos['id'])
         self.socketio_credentials = infos['socketio_cred']
 
         # Now we are successfully logged in, with appropriate login
@@ -160,7 +253,10 @@ class BoardGameArena:
         # We just query the front page and look for globalUserInfos in
         # the response.
         history_url = 'https://boardgamearena.com/'
-        r = self.session.get(history_url)
+        r = self.retry_get(history_url)
+        if r is None:
+            print("Could not get front page")
+            return
 
         m = re.search('[ \t]+globalUserInfos=(.*);', r.text)
         if m is None:
@@ -298,10 +394,10 @@ class BoardGameArena:
             'table' : table_id,
             }
 
-        r = self.session.get(refuse_url, params = refuse_params)
-        print(r.url)
-        assert(r.status_code == 200)
-        print(r.text)
+        r = self.retry_get(refuse_url, params = refuse_params)
+        if r:
+            assert(r.status_code == 200)
+            print(r.text)
 
     def close_table(self, table_id):
         # Moves the table to the closed_table list for future cleanup.

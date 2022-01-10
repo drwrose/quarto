@@ -15,6 +15,13 @@ class BGATable:
     # After three minutes, we'll remove inactive tables from the list.
     inactive_table_timeout = 3 * 60
 
+    # The minimum amount of time, in seconds, we should wait between
+    # receiving a turn notification or invite notification from BGA,
+    # and sending a response.  If we respond more quickly than this,
+    # perhaps the remote BGA client could miss the response (there do
+    # appear to be some race conditions in BGA).
+    min_response_time_seconds = 1
+
     def __init__(self, bga, table_id):
         print("Creating %s for %s" % (self.__class__.__name__, table_id))
         assert(isinstance(table_id, int))
@@ -136,10 +143,10 @@ class BGATable:
             'id' : self.table_id,
             }
 
-        r = self.bga.session.get(tableinfo_url, params = tableinfo_params)
-        dict = json.loads(r.text)
-        table_infos = dict['data']
-        self.__apply_table_infos(table_infos)
+        dict = self.bga.retry_get_json(tableinfo_url, params = tableinfo_params)
+        if dict is not None:
+            table_infos = dict['data']
+            self.__apply_table_infos(table_infos)
 
     def read_gameui_data(self):
         """ Updates the relevant data passed to the Javascript object
@@ -159,7 +166,10 @@ class BGATable:
             'table' : self.table_id,
             }
 
-        r = self.bga.session.get(table_url, params = table_params)
+        r = self.bga.retry_get(table_url, params = table_params)
+        if r is None:
+            message = "No gameui data available"
+            raise RuntimeError(message)
 
         # Now look for gameui.gs_socketio_url and
         # gameui.gs_socketio_path in that returned page.
@@ -197,14 +207,14 @@ class BGATable:
             'history' : 1,
             }
 
-        r = self.bga.session.get(history_url, params = history_params)
-        dict = json.loads(r.text)
-        past_notifications = dict['data']['data']
+        dict = self.bga.retry_get_json(history_url, params = history_params)
+        if dict is not None:
+            past_notifications = dict['data']['data']
 
-        print("Found %s past notifications" % (len(past_notifications)))
-        for bgamsg_data in past_notifications:
-            channel = bgamsg_data['channel']
-            self.__gs_notification(channel, bgamsg_data, False)
+            print("Found %s past notifications" % (len(past_notifications)))
+            for bgamsg_data in past_notifications:
+                channel = bgamsg_data['channel']
+                self.__gs_notification(channel, bgamsg_data, False)
 
     def __apply_table_infos(self, table_infos):
         """ A new table_infos dictionary has been acquired.  Store it,
@@ -239,7 +249,7 @@ class BGATable:
 
         self.last_message = time.time()
 
-        if [int(id) for id in self.table_infos['players']] == [int(self.bga.user_id)]:
+        if [int(id) for id in self.table_infos['players']] == [self.bga.user_id]:
             # If we're the only player in the game, abandon it.
             self.abandon_game()
             return
@@ -257,7 +267,7 @@ class BGATable:
                 # Let's wait just a moment before accepting the
                 # invite, to help avoid a BGA race condition on the
                 # remote BGA clients.
-                time.sleep(1)
+                time.sleep(self.min_response_time_seconds)
                 self.accept_invite()
             elif table_status == 'play':
                 print("table_status is play")
@@ -294,13 +304,14 @@ class BGATable:
             'table' : self.table_id,
             }
 
-        r = self.bga.session.get(join_url, params = join_params)
-        assert(r.status_code == 200)
-        dict = json.loads(r.text)
+        dict = self.bga.retry_get_json(join_url, params = join_params)
+        if dict is None:
+            return
+
         if int(dict['status']):
             print("Accepted invite")
         else:
-            print("Unexpected result from %s" % (r.url))
+            print("Unexpected result from %s" % (join_url))
             print(dict)
 
         self.accepted_invite = True
@@ -316,13 +327,14 @@ class BGATable:
             'table' : self.table_id,
             }
 
-        r = self.bga.session.get(accept_url, params = accept_params)
-        assert(r.status_code == 200)
-        dict = json.loads(r.text)
+        dict = self.bga.retry_get_json(accept_url, params = accept_params)
+        if dict is None:
+            return
+
         if int(dict['status']):
             print("Accepted start")
         else:
-            print("Unexpected result from %s" % (r.url))
+            print("Unexpected result from %s" % (accept_url))
             print(dict)
 
         self.accepted_invite = True
@@ -340,9 +352,11 @@ class BGATable:
             'myturnack' : 'true',
             'table' : self.table_id,
             }
-        r = self.bga.session.get(wakeup_url, params = wakeup_params)
-        assert(r.status_code == 200)
-        print(r.text)
+        dict = self.bga.retry_get_json(wakeup_url, params = wakeup_params)
+        if dict is None:
+            return
+
+        print(dict)
 
     def __gs_notification(self, channel, bgamsg_data, live):
         """ A notification is received on the named channel from the
@@ -428,11 +442,12 @@ class BGATable:
                 'table' : self.table_id,
                 }
 
-            r = self.bga.session.get(decide_url, params = decide_params)
-            assert(r.status_code == 200)
-            dict = json.loads(r.text)
+            dict = self.bga.retry_get_json(decide_url, params = decide_params)
+            if dict is None:
+                return
+
             if not int(dict['status']):
-                print("Unexpected result from %s" % (r.url))
+                print("Unexpected result from %s" % (decide_url))
                 print(dict)
 
             if decision_type == 'abandon':
@@ -515,14 +530,13 @@ class BGATable:
                     'table' : self.table_id,
                     }
 
-            r = self.bga.session.get(quit_url, params = quit_params)
-            assert(r.status_code == 200)
-            print(r.url)
-            dict = json.loads(r.text)
+            dict = self.bga.retry_get_json(quit_url, params = quit_params)
+            if dict is None:
+                return
             if int(dict['status']):
                 # Successfully abandoned.
                 self.game_inactive = True
-            print(dict)
+            #print(dict)
 
     def consider_turn(self):
         """ Called whenever the game changes state, this should look
@@ -530,12 +544,27 @@ class BGATable:
 
         assert(self.is_table_thread())
 
-        if int(self.game_state.get('active_player', 0)) == int(self.bga.user_id):
+        if int(self.game_state.get('active_player', 0)) == self.bga.user_id:
+            self.my_turn_notification = time.time()
             self.my_turn()
 
     def my_turn(self):
         assert(self.is_table_thread())
         pass
+
+    def delay_my_turn_response(self):
+        """ This should be called within the my_turn() implementation
+        in a derived class, before sending the turn response.  It will
+        ensure that at least the minimum amount of delay occurs
+        between the turn notification being received, and the turn
+        response being sent, to avoid a potential race condition on
+        the remote BGA client. """
+
+        elapsed = time.time() - self.my_turn_notification
+        if elapsed < self.min_response_time_seconds:
+            delay = self.min_response_time_seconds - elapsed
+            print("Waiting %s seconds to send response" % (delay))
+            time.sleep(delay)
 
     def poll(self):
         """ Called in the table thread from time to time (e.g. once
