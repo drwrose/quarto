@@ -15,14 +15,9 @@ class BGATable:
     # After three minutes, we'll remove inactive tables from the list.
     inactive_table_timeout = 3 * 60
 
-    count = 0
-
     def __init__(self, bga, table_id):
         print("Creating %s for %s" % (self.__class__.__name__, table_id))
         assert(isinstance(table_id, int))
-        BGATable.count += 1
-        if BGATable.count > 1:
-            import pdb; pdb.set_trace()
         self.bga = bga
         self.table_id = table_id
         self.table_infos = None
