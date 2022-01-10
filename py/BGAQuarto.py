@@ -119,7 +119,7 @@ class BGAQuarto(BGATable):
             dict = json.loads(r.text)
         except json.decoder.JSONDecodeError:
             print(r.url)
-            print("Server response wasn't JSON: %s" (r.text))
+            print("Server response wasn't JSON: %s" % (r.text))
             return
 
         if not dict['status']:
@@ -165,7 +165,7 @@ class BGAQuarto(BGATable):
             dict = json.loads(r.text)
         except json.decoder.JSONDecodeError:
             print(r.url)
-            print("Server response wasn't JSON: %s" (r.text))
+            print("Server response wasn't JSON: %s" % (r.text))
             return
 
         if not dict['status']:

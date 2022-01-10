@@ -66,31 +66,12 @@ class BGANotificationSession:
         self.ws = None
         self.ws_thread = None
         self.ping_thread = None
+        self.sid = None
+        self.ping_interval = None
+        self.ping_timeout = None
 
         self.subscribed_channels = set()
-
-        # Get the session ID (sid) so we can open a websocket and
-        # subscribe to topics for that websocket.
-
-        subscribe_params = {
-            'user' : self.bga.user_id,
-            'name' : self.bga.user_name,
-            'credentials' : self.bga.socketio_credentials,
-            'EIO' : self.eio,
-            'transport' : 'polling',
-            }
-
-        r = self.bga.session.get(self.subscribe_url, params = subscribe_params)
-        messages = dict(self.parse_messages(r.text))
-
-        comm_protocol = messages[0]
-        self.sid = comm_protocol['sid']
-
-        # The server also tells us how frequently it will expect a
-        # ping from us.  We need to respect that, or it will drop the
-        # connection.
-        self.ping_interval = int(comm_protocol['pingInterval']) # time in ms
-        self.ping_timeout = int(comm_protocol['pingTimeout']) #?
+        self.lock = threading.RLock()
 
         self.start_ws()
 
@@ -110,30 +91,45 @@ class BGANotificationSession:
         Parameters consist of one or more strings that represent
         channel names. """
 
-        subscribe_params = {
-            'user' : self.bga.user_id,
-            'name' : self.bga.user_name,
-            'credentials' : self.bga.socketio_credentials,
-            'EIO' : self.eio,
-            'transport' : 'polling',
-            'sid' : self.sid,
-            }
+        if not channels:
+            # No-op.
+            return
 
-        subscribe_messages = []
-        for channel_name in channels:
-            subscribe_messages.append((self.notification_msgid, ["join", channel_name]))
-        subscribe_text = self.format_messages(subscribe_messages)
-        #print(subscribe_text)
+        with self.lock:
+            if not self.sid:
+                # We're not fully started up yet.  Just add it to the
+                # set, it will get subscribed later.
+                for channel_name in channels:
+                    print("Deferring subscription to %s" % (channel_name))
+                    self.subscribed_channels.add(channel_name)
+                return
 
-        r = self.bga.session.post(self.subscribe_url, params = subscribe_params, data = subscribe_text)
-        #print(r.url)
-        if r.status_code != 200:
-            message = "Unable to subscribe to topics: %s" % (r.text)
-            raise RuntimeError(message)
+            subscribe_params = {
+                'user' : self.bga.user_id,
+                'name' : self.bga.user_name,
+                'credentials' : self.bga.socketio_credentials,
+                'EIO' : self.eio,
+                'transport' : 'polling',
+                'sid' : self.sid,
+                }
 
-        for channel_name in channels:
-            print("Subscribed to %s on %s:%s" % (channel_name, self.sid, self.subscribe_url))
-            self.subscribed_channels.add(channel_name)
+            subscribe_messages = []
+            for channel_name in channels:
+                subscribe_messages.append((self.notification_msgid, ["join", channel_name]))
+            subscribe_text = self.format_messages(subscribe_messages)
+            #print(subscribe_text)
+
+            r = self.bga.session.post(self.subscribe_url, params = subscribe_params, data = subscribe_text)
+            #print(r.url)
+            if r.status_code != 200:
+                message = "Unable to subscribe to topics: %s" % (r.url)
+                print(r.url)
+                print(r.text)
+                raise RuntimeError(message)
+
+            for channel_name in channels:
+                print("Subscribed to %s on %s:%s" % (channel_name, self.sid, self.subscribe_url))
+                self.subscribed_channels.add(channel_name)
 
         #print(r.text)
 
@@ -373,41 +369,78 @@ class BGANotificationSession:
         """ Connect the websocket and listen for messages until we get
         disconnected for whatever reason. """
 
-        assert not self.ws
+        with self.lock:
+            # First, get a session ID (sid) so we can open a websocket
+            # and subscribe to topics for that websocket.  We do all
+            # this with the lock held, so we don't have a race
+            # condition with subscribing to new channels.
+            assert not self.sid
+            subscribe_params = {
+                'user' : self.bga.user_id,
+                'name' : self.bga.user_name,
+                'credentials' : self.bga.socketio_credentials,
+                'EIO' : self.eio,
+                'transport' : 'polling',
+                }
 
-        # Here in the start of the websocket thread, open the new websocket.
-        websocket_params = {
-            'user' : self.bga.user_id,
-            'name' : self.bga.user_name,
-            'credentials' : self.bga.socketio_credentials,
-            'EIO' : self.eio,
-            'transport' : 'websocket',
-            'sid' : self.sid,
-            }
+            r = self.bga.session.get(self.subscribe_url, params = subscribe_params)
+            #print(r.url)
+            messages = dict(self.parse_messages(r.text))
+            #print(messages)
 
-        parser = requests.PreparedRequest()
-        parser.prepare_url(url = self.subscribe_url, params = websocket_params)
+            comm_protocol = messages[0]
+            self.sid = comm_protocol['sid']
 
-        # Change the url in subscribe_url from https:// to wss://.
-        assert(parser.url.startswith('https://'))
-        url = 'wss' + parser.url[5:]
-        #print(url)
+            # The server also tells us how frequently it will expect a
+            # ping from us.  We need to respect that, or it will drop the
+            # connection.
+            self.ping_interval = int(comm_protocol['pingInterval']) # time in ms
+            self.ping_timeout = int(comm_protocol['pingTimeout']) #?
 
-        #websocket.enableTrace(True)
-        self.ws = websocket.WebSocketApp(url,
-                                         on_open = self.__ws_open,
-                                         on_message = self.__ws_message,
-                                         on_error = self.__ws_error,
-                                         on_close = self.__ws_close)
+            # Now open the new websocket.
+            assert not self.ws
+            websocket_params = {
+                'user' : self.bga.user_id,
+                'name' : self.bga.user_name,
+                'credentials' : self.bga.socketio_credentials,
+                'EIO' : self.eio,
+                'transport' : 'websocket',
+                'sid' : self.sid,
+                }
 
+            parser = requests.PreparedRequest()
+            parser.prepare_url(url = self.subscribe_url, params = websocket_params)
+
+            # Change the url in subscribe_url from https:// to wss://.
+            assert(parser.url.startswith('https://'))
+            url = 'wss' + parser.url[5:]
+            #print(url)
+
+            #websocket.enableTrace(True)
+            self.ws = websocket.WebSocketApp(url,
+                                             on_open = self.__ws_open,
+                                             on_message = self.__ws_message,
+                                             on_error = self.__ws_error,
+                                             on_close = self.__ws_close)
+
+            # Now, re-subscribe to whatever channels we had subscribed
+            # to before, e.g. from a previous session.
+            channels = list(self.subscribed_channels)
+            self.subscribed_channels = set()
+            self.subscribe_channels(*channels)
+
+        # Now run and listen on the socket for incoming messages.
 
         # Actually, this doesn't seem to run *forever*, just until the
         # socket is closed.  That's why we have self.auto_restart.
         ws = self.ws
         if ws:
             ws.run_forever(sslopt = {"cert_reqs" : ssl.CERT_NONE})
-        print ("Socket closed on %s:%s" % (self.sid, self.subscribe_url))
+
+        sid = self.sid
+        self.sid = None
         self.ws = None
+        print ("Socket closed on %s:%s" % (sid, self.subscribe_url))
 
     def __start_ping(self):
         """ Starts the ping thread to send regular heartbeats to the
