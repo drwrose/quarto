@@ -50,8 +50,8 @@ class BGANotificationSession:
     notification_msgid = 42
 
     # The number of seconds we wait between auto_restarts when a
-    # connection attempt fails.
-    restart_wait_seconds = 30
+    # socket is closed or a connection attempt fails.
+    restart_wait_seconds = 5
 
     def __init__(self, bga, parent_name = None, notification_queue = None, message_callback = None, socketio_url = None, socketio_path = None, auto_restart = False):
         # If auto_restart is True, the websocket will reconnect itself
