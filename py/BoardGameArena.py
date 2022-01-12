@@ -84,7 +84,7 @@ class BoardGameArena:
         try:
             r = self.session.post(url, params = params, data = data)
             if not r.ok:
-                print("Got response %s on %s" % (r.status_code))
+                print("Got response %s on %s" % (r.status_code, url))
                 return None
         except requests.ConnectionError:
             print("Connection error on %s" % (url))
@@ -119,7 +119,7 @@ class BoardGameArena:
         try:
             r = self.session.get(url, params = params)
             if not r.ok:
-                print("Got response %s on %s" % (r.status_code))
+                print("Got response %s on %s" % (r.status_code, url))
                 return None
         except requests.ConnectionError:
             print("Connection error on %s" % (url))
