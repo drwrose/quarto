@@ -347,8 +347,8 @@ class BoardGameArena:
         game_name = args.get('game_name', None)
         table_id = int(args.get('table_id', 0))
         print("update_player_table_status: %s, %s at table %s" % (status, game_name, table_id))
-
-        self.add_table(table_id, game_name = game_name)
+        if status != 'afterplayed':
+            self.add_table(table_id, game_name = game_name)
 
     def num_active_tables(self):
         """ Returns the number of tables we're currently involved in
