@@ -51,7 +51,7 @@ class BGANotificationSession:
 
     # The number of seconds we wait between auto_restarts when a
     # socket is closed or a connection attempt fails.
-    restart_wait_seconds = 5
+    restart_wait_seconds = 10
 
     def __init__(self, bga, parent_name = None, notification_queue = None, message_callback = None, socketio_url = None, socketio_path = None, auto_restart = False):
         # If auto_restart is True, the websocket will reconnect itself
@@ -297,7 +297,7 @@ class BGANotificationSession:
         self.notification_queue.add_message(self.message_callback, channel_name, message_data)
 
     def __ws_error(self, ws, error):
-        print("__ws_error(%s): %s" % (ws, error))
+        print("Socket error on %s:%s: %s" % (self.sid, self.subscribe_url, error))
 
         # Maybe closing the socket when we get an error notification
         # is a good idea, to help us exit cleanly?
