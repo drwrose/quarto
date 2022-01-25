@@ -40,7 +40,7 @@ class BoardGameArena:
         # This is the parent of the top-level notification channels,
         # which listen for game invites and such.  Each BGATable also
         # has its own set of notification channels.
-        self.notifications = BGANotifications(self, name = 'top', auto_restart = True)
+        self.notifications = BGANotifications(self, name = 'top')
 
         # The dictionary of all BGATable objects, indexed by table_id.
         self.tables = {}
@@ -93,7 +93,7 @@ class BoardGameArena:
         return r
 
     def try_post_json(self, url, params = None, data = None):
-        """ Like retry_post(), but automatically decodes the response
+        """ Like try_post(), but automatically decodes the response
         as a JSON object.  Returns the decoded result, or None if
         there was an error. """
 

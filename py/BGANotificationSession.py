@@ -51,21 +51,20 @@ class BGANotificationSession:
 
     # The number of seconds we wait between auto_restarts when a
     # socket is closed or a connection attempt fails.
-    restart_wait_seconds = 10
+    restart_wait_seconds = 15
 
-    def __init__(self, bga, parent_name = None, notification_queue = None, message_callback = None, socketio_url = None, socketio_path = None, auto_restart = False):
-        # If auto_restart is True, the websocket will reconnect itself
-        # if it gets dropped by the server.
-
+    def __init__(self, bga, parent_name = None, notification_queue = None, message_callback = None, socketio_url = None, socketio_path = None):
         self.bga = bga
         self.notification_queue = notification_queue
         self.message_callback = message_callback
         self.socketio_url = socketio_url
         self.socketio_path = socketio_path
-        self.auto_restart = auto_restart
         self.subscribe_url = '%s/%s/' % (self.socketio_url, self.socketio_path)
 
         self.name = '%s %s' % (parent_name, self.subscribe_url)
+
+        # Initially, we want to restart the socket if it gets closed.
+        self.auto_restart = True
 
         self.ws = None
         self.ws_thread = None
@@ -127,28 +126,21 @@ class BGANotificationSession:
             subscribe_text = self.format_messages(subscribe_messages)
             #print(subscribe_text)
 
-            r = self.bga.session.post(self.subscribe_url, params = subscribe_params, data = subscribe_text)
-            #print(r.url)
-            if r.status_code != 200:
-                message = "Unable to subscribe to topics: %s" % (r.url)
-                print(r.url)
-                print(r.text)
-
-                # As described above, perhaps we only failed because
-                # we happened to get called at the wrong time, just
-                # when the socket is being reset.  We could perhaps
-                # protect against this case by not raising an
-                # exception in the case of self.auto_restart being
-                # true, assuming that when the socket restarts, the
-                # subscribe request will succeed.  Not sure whether
-                # that's a good idea or not.
-                raise RuntimeError(message)
-
             for channel_name in channels:
-                print("Subscribed to %s on %s:%s" % (channel_name, self.sid, self.subscribe_url))
+                print("Subscribing to %s on %s:%s" % (channel_name, self.sid, self.subscribe_url))
                 self.subscribed_channels.add(channel_name)
 
-        #print(r.text)
+            r = self.bga.try_post(self.subscribe_url, params = subscribe_params, data = subscribe_text)
+            if r is None:
+                print("Unable to subscribe to topics: %s" % (self.subscribe_url))
+
+                # If a subscribe attempt failed, we should close the
+                # socket to force the thread to try to subscribe again
+                # after a short pause.
+                self.close_socket()
+
+            else:
+                print("Subscribed to topics: %s, %s" % (self.subscribe_url, r.text))
 
     def format_messages(self, messages):
         """ Given a list of (id, object) tuples, formats them into a
@@ -299,19 +291,14 @@ class BGANotificationSession:
     def __ws_error(self, ws, error):
         print("Socket error on %s:%s: %s" % (self.sid, self.subscribe_url, error))
 
-        # Maybe closing the socket when we get an error notification
-        # is a good idea, to help us exit cleanly?
-        ws = self.ws
-        if ws:
-            ws.close()
-            self.ws = None
+        # Not sure what caused the socket error, let's force it closed
+        # and restart it.
+        self.close_socket()
 
     def __ws_close(self, ws, close_status_code, close_msg):
         #print("__ws_close(%s)" % (ws))
         if ws == self.ws:
-            self.ws = None
-
-        self.__stop_ping()
+            self.close_socket()
 
     def __ws_open(self, ws):
         #print("__ws_open(%s) vs. %s" % (ws, self.ws))
@@ -348,6 +335,17 @@ class BGANotificationSession:
         self.ws_thread = threading.Thread(target = self.__ws_thread_main, name = thread_name)
         self.ws_thread.start()
 
+    def close_socket(self):
+        """ Closes the websocket, if it is open.  This should force
+        the thread to finish one pass. """
+
+        self.__stop_ping()
+
+        ws = self.ws
+        if ws:
+            ws.close()
+            self.ws = None
+
     def stop_ws(self):
         """ Close the websocket and thread previously created by
         start_ws(). """
@@ -360,11 +358,7 @@ class BGANotificationSession:
             return
 
         # This should wake up the thread.
-        ws = self.ws
-        if ws:
-            ws.close()
-            self.ws = None
-            del ws
+        self.close_socket()
 
         thread = self.ws_thread
         self.ws_thread = None

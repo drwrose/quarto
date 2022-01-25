@@ -39,7 +39,7 @@ class BGATable:
 
         self.lock = threading.RLock()
 
-        self.notifications = BGANotifications(self.bga, name = str(self.table_id), auto_restart = True)
+        self.notifications = BGANotifications(self.bga, name = str(self.table_id))
 
         # Now we create our own thread to dispatch our table-specific
         # notifications.
