@@ -459,11 +459,6 @@ class BGANotificationSession:
         if ws:
             ws.run_forever(sslopt = {"cert_reqs" : ssl.CERT_NONE})
 
-        # There is a tiny race condition here: after the socket closes
-        # (or even before we've detected that it's closing), and
-        # before we set self.sid to None, some other thread might call
-        # subscribe_channels() with the now-invalid self.sid, and that
-        # will fail.  See subscribe_channels().
         sid = self.sid
         self.sid = None
         self.ws = None
